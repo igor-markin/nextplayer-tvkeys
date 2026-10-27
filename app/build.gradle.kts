@@ -14,9 +14,9 @@ android {
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        applicationId = "dev.anilbeesetti.nextplayer"
-        versionCode = 75
-        versionName = "0.19.0"
+        applicationId = "dev.anilbeesetti.nextplayer.tvkeys"
+        versionCode = 75001
+        versionName = "0.19.0-tvkeys.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

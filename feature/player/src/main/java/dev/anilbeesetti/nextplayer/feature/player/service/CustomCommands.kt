@@ -26,6 +26,8 @@ enum class CustomCommands(val customAction: String) {
     IS_LOUDNESS_GAIN_SUPPORTED(customAction = "IS_LOUDNESS_GAIN_SUPPORTED"),
     SET_LOUDNESS_GAIN(customAction = "SET_LOUDNESS_GAIN"),
     GET_LOUDNESS_GAIN(customAction = "GET_LOUDNESS_GAIN"),
+    SET_TV_BOOST_ACTIVE(customAction = "SET_TV_BOOST_ACTIVE"),
+    ADJUST_TV_BOOST(customAction = "ADJUST_TV_BOOST"),
     SET_VIDEO_DECODER_MODE(customAction = "SET_VIDEO_DECODER_MODE"),
     SET_AUDIO_DECODER_MODE(customAction = "SET_AUDIO_DECODER_MODE"),
     TRY_DECODER_FALLBACK(customAction = "TRY_DECODER_FALLBACK"),
@@ -49,6 +51,9 @@ enum class CustomCommands(val customAction: String) {
         const val SUBTITLE_DELAY_KEY = "subtitle_delay"
         const val SUBTITLE_SPEED_KEY = "subtitle_speed"
         const val LOUDNESS_GAIN_KEY = "loudness_gain"
+        const val TV_BOOST_ACTIVE_KEY = "tv_boost_active"
+        const val TV_BOOST_DELTA_KEY = "tv_boost_delta"
+        const val TV_BOOST_RESET_KEY = "tv_boost_reset"
         const val IS_LOUDNESS_GAIN_SUPPORTED_KEY = "is_loudness_gain_supported"
         const val VIDEO_DECODER_MODE_KEY = "video_decoder_mode"
         const val AUDIO_DECODER_MODE_KEY = "audio_decoder_mode"

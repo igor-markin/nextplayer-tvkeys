@@ -44,6 +44,8 @@ import dev.anilbeesetti.nextplayer.feature.player.state.rememberPlayerKeyInputSt
 import dev.anilbeesetti.nextplayer.feature.player.ui.DpadSeekIndicator
 import dev.anilbeesetti.nextplayer.feature.player.ui.OverlayShowView
 import dev.anilbeesetti.nextplayer.feature.player.ui.OverlayView
+import dev.anilbeesetti.nextplayer.feature.player.state.TvBoostState
+import dev.anilbeesetti.nextplayer.feature.player.state.TvColorAction
 import dev.anilbeesetti.nextplayer.feature.player.ui.PlayerGestureIndicators
 import kotlin.time.Duration.Companion.seconds
 
@@ -60,6 +62,7 @@ internal fun MediaPlayerControls(
     videoZoomAndContentScaleState: VideoZoomAndContentScaleState,
     isPipSupported: Boolean,
     onPictureInPictureClick: () -> Unit,
+    tvBoostState: TvBoostState? = null,
     modifier: Modifier = Modifier,
 ) {
     val playerPreferences = state.playerPreferences
@@ -113,7 +116,19 @@ internal fun MediaPlayerControls(
                     focusRequester(rootFocusRequester)
                         .focusable()
                         .onPreviewKeyEvent { keyEvent ->
-                            if (overlayView != null) false else keyInputState.onKeyEvent(keyEvent)
+                            val color = tvBoostState?.handleKey(keyEvent.nativeKeyEvent)
+                            if (color?.consumed == true) {
+                                when (color.action) {
+                                    TvColorAction.AUDIO -> showOverlay(OverlayView.AUDIO_SELECTOR)
+                                    TvColorAction.SUBTITLES -> showOverlay(OverlayView.SUBTITLE_SELECTOR)
+                                    else -> Unit
+                                }
+                                true
+                            } else if (overlayView != null) {
+                                false
+                            } else {
+                                keyInputState.onKeyEvent(keyEvent)
+                            }
                         }
                 },
         ) {

@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="tv_boost_gain">Усиление: +%1$.1f дБ</string>
+    <string name="tv_boost_zero">Усиление: 0 дБ (100%, без усиления)</string>
+    <string name="tv_boost_unavailable">Усиление недоступно для этой аудиосессии</string>
     <string name="player_description">Управление проигрывателем, настройка жестов</string>
     <string name="about_description">Версия, поддержка, о программе</string>
     <string name="appearance_name">Внешний вид</string>

@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import dev.anilbeesetti.nextplayer.core.ui.R
+import dev.anilbeesetti.nextplayer.core.common.extensions.isTelevision
 import dev.anilbeesetti.nextplayer.core.ui.theme.NextPlayerTheme
 import dev.anilbeesetti.nextplayer.feature.player.state.ControlsVisibilityState
 import dev.anilbeesetti.nextplayer.feature.player.state.PlayerOrientationEffect
@@ -33,6 +34,7 @@ import dev.anilbeesetti.nextplayer.feature.player.state.rememberTapGestureState
 import dev.anilbeesetti.nextplayer.feature.player.state.rememberVideoZoomAndContentScaleState
 import dev.anilbeesetti.nextplayer.feature.player.state.rememberVolumeAndBrightnessGestureState
 import dev.anilbeesetti.nextplayer.feature.player.state.rememberVolumeState
+import dev.anilbeesetti.nextplayer.feature.player.state.rememberTvBoostState
 import dev.anilbeesetti.nextplayer.feature.player.ui.PlayerErrorDialogs
 import dev.anilbeesetti.nextplayer.feature.player.ui.PlayerGestures
 import dev.anilbeesetti.nextplayer.feature.player.ui.PlayerVerticalGestureIndicators
@@ -67,8 +69,9 @@ internal fun MediaPlayerContent(
 ) {
     val playerPreferences = state.playerPreferences
     val isPreview = LocalInspectionMode.current
+    val isTvKeys = !isPreview && LocalContext.current.isTelevision
     // Layout previews have neither a PlayerActivity nor a live video/audio session.
-    val volumeState = if (!isPreview) {
+    val volumeState = if (!isPreview && !isTvKeys) {
         rememberVolumeState(
             player = player,
             showVolumePanelIfHeadsetIsOn = playerPreferences.showSystemVolumePanel,
@@ -81,6 +84,7 @@ internal fun MediaPlayerContent(
         return
     }
     val context = LocalContext.current
+    val tvBoostState = if (isTvKeys) rememberTvBoostState(player) else null
     val controlsVisibilityState = rememberControlsVisibilityState(
         player = player,
         hideAfter = playerPreferences.controllerAutoHideTimeout.seconds,
@@ -180,6 +184,7 @@ internal fun MediaPlayerContent(
         }
         MediaPlayerControls(
             player = player,
+            tvBoostState = tvBoostState,
             state = state,
             onAction = onAction,
             controlsVisibilityState = controlsVisibilityState,

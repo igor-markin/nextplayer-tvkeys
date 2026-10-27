@@ -3,9 +3,15 @@ package dev.anilbeesetti.nextplayer.feature.player.service
 import android.app.PendingIntent
 import android.content.ContentResolver
 import android.content.Intent
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.Process
 import androidx.annotation.OptIn
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
@@ -119,8 +125,26 @@ class PlayerService : MediaSessionService() {
     private var isMediaItemReady = false
     private var pendingAudioSelection: Pair<String, Uri>? = null
 
-    private var loudnessEnhancer: LoudnessEnhancer? = null
-    private var currentVolumeGain: Int = 0
+    private val tvBoost = TvBoostController { sessionId ->
+        val enhancer = LoudnessEnhancer(sessionId)
+        object : TvBoostEffect {
+            override val hasControl get() = enhancer.hasControl()
+            override fun applyGain(gainMillibels: Int): Int {
+                enhancer.setTargetGain(gainMillibels)
+                enhancer.enabled = gainMillibels > 0
+                return enhancer.targetGain.toInt()
+            }
+            override fun release() = enhancer.release()
+        }
+    }
+    private val audioDevices = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
+            if (addedDevices.any { it.isSink }) tvBoost.reset()
+        }
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
+            if (removedDevices.any { it.isSink }) tvBoost.reset()
+        }
+    }
 
     private lateinit var decoderManager: DecoderManager
     private lateinit var trackSelector: DefaultTrackSelector
@@ -204,6 +228,7 @@ class PlayerService : MediaSessionService() {
     private val playbackStateListener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             super.onMediaItemTransition(mediaItem, reason)
+            tvBoost.reset()
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) return
             restoreDecoderChoices(mediaItem)
             isMediaItemReady = false
@@ -345,6 +370,7 @@ class PlayerService : MediaSessionService() {
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             super.onPlaybackStateChanged(playbackState)
+            if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) tvBoost.reset()
 
             val player = mediaSession?.player
             val shouldResetPlaybackParameters = playbackState == Player.STATE_ENDED ||
@@ -442,30 +468,7 @@ class PlayerService : MediaSessionService() {
 
         override fun onAudioSessionIdChanged(audioSessionId: Int) {
             super.onAudioSessionIdChanged(audioSessionId)
-            if (!playerPreferences.enableVolumeBoost) return
-            if (audioSessionId == C.AUDIO_SESSION_ID_UNSET) return
-            try {
-                loudnessEnhancer?.release()
-                loudnessEnhancer = LoudnessEnhancer(audioSessionId)
-                if (currentVolumeGain > 0) {
-                    setEnhancerTargetGain(currentVolumeGain)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                loudnessEnhancer = null
-            }
-        }
-    }
-
-    private fun setEnhancerTargetGain(gain: Int) {
-        val enhancer = loudnessEnhancer ?: return
-
-        try {
-            enhancer.setTargetGain(gain)
-            enhancer.enabled = gain > 0
-            currentVolumeGain = enhancer.targetGain.toInt()
-        } catch (e: Exception) {
-            e.printStackTrace()
+            tvBoost.updateAudioSession(audioSessionId, playerPreferences.enableVolumeBoost)
         }
     }
 
@@ -607,7 +610,7 @@ class PlayerService : MediaSessionService() {
                 }
 
                 CustomCommands.IS_LOUDNESS_GAIN_SUPPORTED -> {
-                    val isSupported = loudnessEnhancer != null
+                    val isSupported = tvBoost.isSupported
                     return@future SessionResult(
                         SessionResult.RESULT_SUCCESS,
                         Bundle().apply {
@@ -617,16 +620,35 @@ class PlayerService : MediaSessionService() {
                 }
 
                 CustomCommands.SET_LOUDNESS_GAIN -> {
+                    if (controller.uid != Process.myUid()) return@future SessionResult(SessionResult.RESULT_ERROR_PERMISSION_DENIED)
                     val gain = args.getInt(CustomCommands.LOUDNESS_GAIN_KEY, 0)
-                    setEnhancerTargetGain(gain)
+                    val applied = tvBoost.setGain(gain)
+                    return@future SessionResult(if (applied) SessionResult.RESULT_SUCCESS else SessionResult.RESULT_ERROR_INVALID_STATE)
+                }
+
+                CustomCommands.SET_TV_BOOST_ACTIVE -> {
+                    if (controller.uid != Process.myUid()) return@future SessionResult(SessionResult.RESULT_ERROR_PERMISSION_DENIED)
+                    tvBoost.setActive(args.getBoolean(CustomCommands.TV_BOOST_ACTIVE_KEY, false))
                     return@future SessionResult(SessionResult.RESULT_SUCCESS)
+                }
+
+                CustomCommands.ADJUST_TV_BOOST -> {
+                    if (controller.uid != Process.myUid()) return@future SessionResult(SessionResult.RESULT_ERROR_PERMISSION_DENIED)
+                    val applied = tvBoost.adjust(
+                        args.getInt(CustomCommands.TV_BOOST_DELTA_KEY, 0),
+                        args.getBoolean(CustomCommands.TV_BOOST_RESET_KEY, false),
+                    )
+                    return@future SessionResult(
+                        if (applied) SessionResult.RESULT_SUCCESS else SessionResult.RESULT_ERROR_INVALID_STATE,
+                        Bundle().apply { putInt(CustomCommands.LOUDNESS_GAIN_KEY, tvBoost.gainMillibels) },
+                    )
                 }
 
                 CustomCommands.GET_LOUDNESS_GAIN -> {
                     return@future SessionResult(
                         SessionResult.RESULT_SUCCESS,
                         Bundle().apply {
-                            putInt(CustomCommands.LOUDNESS_GAIN_KEY, currentVolumeGain)
+                            putInt(CustomCommands.LOUDNESS_GAIN_KEY, tvBoost.gainMillibels)
                         },
                     )
                 }
@@ -707,6 +729,7 @@ class PlayerService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        getSystemService(AudioManager::class.java).registerAudioDeviceCallback(audioDevices, Handler(Looper.getMainLooper()))
         decoderManager = DecoderManager()
         val renderersFactory = NextRenderersFactory(applicationContext).setDecoderManager(decoderManager)
 
@@ -800,8 +823,8 @@ class PlayerService : MediaSessionService() {
     override fun onDestroy() {
         super.onDestroy()
         artworkLoadJob?.cancel()
-        loudnessEnhancer?.release()
-        loudnessEnhancer = null
+        getSystemService(AudioManager::class.java).unregisterAudioDeviceCallback(audioDevices)
+        tvBoost.close()
         mediaSession?.run {
             player.clearMediaItems()
             player.stop()
