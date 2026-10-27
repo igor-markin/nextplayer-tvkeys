@@ -14,6 +14,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,11 +77,13 @@ internal fun MediaPlayerControls(
         seekIncrementMs = playerPreferences.seekIncrement.seconds.inWholeMilliseconds,
     )
     var overlayView by remember { mutableStateOf<OverlayView?>(null) }
+    SideEffect { tvBoostState?.setFeedbackBlocked(overlayView != null) }
     LaunchedEffect(metadataState.mediaId) {
         if (overlayView == OverlayView.CHAPTERS) overlayView = null
     }
 
     fun showOverlay(overlay: OverlayView) {
+        tvBoostState?.setFeedbackBlocked(true)
         controlsVisibilityState.hideControls()
         overlayView = overlay
     }

@@ -211,21 +211,6 @@ internal fun MediaPlayerContent(
                 }
             },
         )
-        if (isTvKeys && pictureInPictureState?.isInPictureInPictureMode != true) {
-            state.tvBoostStatus?.let { boost ->
-                Text(
-                    text = stringResource(
-                        if (boost.active && boost.available) R.string.tv_boost_gain else R.string.tv_boost_inactive,
-                        boost.targetMillibels / 100.0f,
-                    ),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(24.dp)
-                        .clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.65f))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                )
-            }
-        }
         if (volumeAndBrightnessGestureState != null && volumeState != null && brightnessState != null) {
             PlayerVerticalGestureIndicators(
                 activeGesture = volumeAndBrightnessGestureState.activeGesture,

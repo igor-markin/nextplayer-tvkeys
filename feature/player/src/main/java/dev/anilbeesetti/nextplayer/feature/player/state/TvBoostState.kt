@@ -48,8 +48,18 @@ internal class TvBoostState(
     private val keys = TvColorKeyHandler()
     private var active = false
     private var keyContext: TvBoostContext? = null
-    private var feedback: Toast? = null
-    private var restoredContext: TvBoostContext? = null
+    private var toast: Toast? = null
+    private val feedback = TvBoostFeedback(
+        scope = scope,
+        showMessage = { text ->
+            toast?.cancel()
+            toast = Toast.makeText(context, text, Toast.LENGTH_SHORT).also { it.show() }
+        },
+        dismissMessage = {
+            toast?.cancel()
+            toast = null
+        },
+    )
     private var latestTarget = 0
     private val requests = TvBoostCommandQueue(
         scope = scope,
@@ -83,10 +93,13 @@ internal class TvBoostState(
                 Log.i("TvKeys", "Applied gain millibels=$gain")
                 if (gain == 0) context.getString(R.string.tv_boost_zero) else context.getString(R.string.tv_boost_gain, gain / 100.0f)
             }
-            showFeedback(text)
+            feedback.show(text)
         },
     )
-    private val repeater = TvBoostKeyRepeater(scope, ::currentContext) { requests.submit(it, repeated = true) }
+    private val repeater = TvBoostKeyRepeater(scope, ::currentContext) {
+        feedback.onUserInteraction()
+        requests.submit(it, repeated = true)
+    }
 
     fun onStatus(status: TvBoostStatus?) {
         if (status != null) {
@@ -96,12 +109,9 @@ internal class TvBoostState(
         val snapshot = currentContext()
         if (keyContext != snapshot) {
             stopRepeating()
+            feedback.dismiss()
             keys.clear()
             keyContext = snapshot
-        }
-        if (active && status?.active == true && status.available && snapshot != null && restoredContext != snapshot) {
-            restoredContext = snapshot
-            showFeedback(context.getString(R.string.tv_boost_restored, status.targetMillibels / 100.0f))
         }
     }
 
@@ -119,17 +129,20 @@ internal class TvBoostState(
         val snapshot = currentContext()
         if (keyContext != snapshot) {
             stopRepeating()
+            feedback.dismiss()
             keyContext = snapshot
             keys.clear()
         }
         val keyCode = TvColorKeyHandler.normalize(event.keyCode, event.scanCode, event.device?.vendorId ?: 0, event.device?.productId ?: 0)
         if (event.isCanceled) {
             stopRepeating()
+            feedback.dismiss()
             keys.clear()
             return keys.handle(keyCode, KeyEvent.ACTION_UP, 0, 0)
         }
         if (event.action == KeyEvent.ACTION_UP && repeater.release(keyCode)) requests.cancelRepeats()
         val result = keys.handle(keyCode, event.action, event.repeatCount, event.eventTime - event.downTime)
+        if (result.consumed && (keyCode == KeyEvent.KEYCODE_PROG_RED || keyCode == KeyEvent.KEYCODE_PROG_GREEN)) feedback.onUserInteraction()
         if (result.consumed) Log.i("TvKeys", "Key code=${event.keyCode} scan=${event.scanCode} action=${event.action} repeat=${event.repeatCount} mapped=$keyCode")
         result.action?.takeIf { it == TvColorAction.INCREASE || it == TvColorAction.DECREASE || it == TvColorAction.RESET }?.let {
             requests.submit(it)
@@ -139,7 +152,10 @@ internal class TvBoostState(
                 if (repeater.reachedBound(latestTarget)) stopRepeating()
             }
         }
-        if (result.action == TvColorAction.AUDIO || result.action == TvColorAction.SUBTITLES) stopRepeating()
+        if (result.action == TvColorAction.AUDIO || result.action == TvColorAction.SUBTITLES) {
+            stopRepeating()
+            feedback.dismiss()
+        }
         return result
     }
 
@@ -150,9 +166,7 @@ internal class TvBoostState(
         keyContext = null
         keys.clear()
         if (!value) {
-            restoredContext = null
-            feedback?.cancel()
-            feedback = null
+            feedback.dismiss()
         }
         if (controller.isConnected) {
             controller.sendCustomCommand(
@@ -172,8 +186,5 @@ internal class TvBoostState(
         requests.cancelRepeats()
     }
 
-    private fun showFeedback(text: String) {
-        feedback?.cancel()
-        feedback = Toast.makeText(context, text, Toast.LENGTH_SHORT).also { it.show() }
-    }
+    fun setFeedbackBlocked(value: Boolean) = feedback.setBlocked(value)
 }
