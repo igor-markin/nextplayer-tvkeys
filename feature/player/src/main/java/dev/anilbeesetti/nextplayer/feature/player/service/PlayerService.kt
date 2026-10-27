@@ -125,7 +125,7 @@ class PlayerService : MediaSessionService() {
     private var isMediaItemReady = false
     private var pendingAudioSelection: Pair<String, Uri>? = null
 
-    private val tvBoost = TvBoostController { sessionId ->
+    private val tvBoost = TvBoostController(onGenerationChanged = ::publishTvBoostState) { sessionId ->
         val enhancer = LoudnessEnhancer(sessionId)
         object : TvBoostEffect {
             override val hasControl get() = enhancer.hasControl()
@@ -634,13 +634,19 @@ class PlayerService : MediaSessionService() {
 
                 CustomCommands.ADJUST_TV_BOOST -> {
                     if (controller.uid != Process.myUid()) return@future SessionResult(SessionResult.RESULT_ERROR_PERMISSION_DENIED)
-                    val applied = tvBoost.adjust(
+                    val mediaId = session.player.currentMediaItem?.mediaId
+                    val applied = mediaId != null && mediaId == args.getString(CustomCommands.TV_BOOST_MEDIA_ID_KEY) && tvBoost.adjust(
+                        args.getLong(CustomCommands.TV_BOOST_GENERATION_KEY, -1),
                         args.getInt(CustomCommands.TV_BOOST_DELTA_KEY, 0),
                         args.getBoolean(CustomCommands.TV_BOOST_RESET_KEY, false),
                     )
                     return@future SessionResult(
                         if (applied) SessionResult.RESULT_SUCCESS else SessionResult.RESULT_ERROR_INVALID_STATE,
-                        Bundle().apply { putInt(CustomCommands.LOUDNESS_GAIN_KEY, tvBoost.gainMillibels) },
+                        Bundle().apply {
+                            putInt(CustomCommands.LOUDNESS_GAIN_KEY, tvBoost.gainMillibels)
+                            putLong(CustomCommands.TV_BOOST_GENERATION_KEY, tvBoost.generation)
+                            putString(CustomCommands.TV_BOOST_MEDIA_ID_KEY, mediaId)
+                        },
                     )
                 }
 
@@ -794,6 +800,7 @@ class PlayerService : MediaSessionService() {
                     ),
                 )
             }.build()
+            publishTvBoostState()
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -920,6 +927,14 @@ class PlayerService : MediaSessionService() {
                 }.build().withExternalAudio(externalAudio)
             }
         }.awaitAll()
+    }
+
+    private fun publishTvBoostState() {
+        val session = mediaSession ?: return
+        session.sessionExtras = Bundle(session.sessionExtras).apply {
+            putLong(CustomCommands.TV_BOOST_GENERATION_KEY, tvBoost.generation)
+            putString(CustomCommands.TV_BOOST_MEDIA_ID_KEY, session.player.currentMediaItem?.mediaId)
+        }
     }
 
     private fun publishDecoderState() {

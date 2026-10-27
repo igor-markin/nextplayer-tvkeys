@@ -54,6 +54,8 @@ enum class CustomCommands(val customAction: String) {
         const val TV_BOOST_ACTIVE_KEY = "tv_boost_active"
         const val TV_BOOST_DELTA_KEY = "tv_boost_delta"
         const val TV_BOOST_RESET_KEY = "tv_boost_reset"
+        const val TV_BOOST_GENERATION_KEY = "tv_boost_generation"
+        const val TV_BOOST_MEDIA_ID_KEY = "tv_boost_media_id"
         const val IS_LOUDNESS_GAIN_SUPPORTED_KEY = "is_loudness_gain_supported"
         const val VIDEO_DECODER_MODE_KEY = "video_decoder_mode"
         const val AUDIO_DECODER_MODE_KEY = "audio_decoder_mode"

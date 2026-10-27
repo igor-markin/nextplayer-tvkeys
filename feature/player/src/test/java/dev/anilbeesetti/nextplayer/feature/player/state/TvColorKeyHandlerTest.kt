@@ -48,4 +48,14 @@ class TvColorKeyHandlerTest {
         assertFalse(down(KeyEvent.KEYCODE_VOLUME_UP).consumed)
         assertFalse(down(KeyEvent.KEYCODE_DPAD_UP).consumed)
     }
+
+    @Test
+    fun aReleaseAfterLifecycleOrSessionClearCannotResetTheNewContext() {
+        down(KeyEvent.KEYCODE_PROG_RED)
+        keys.clear()
+        assertNull(up(KeyEvent.KEYCODE_PROG_RED, 900).action)
+        assertNull(down(KeyEvent.KEYCODE_PROG_GREEN, 1, 900).action)
+        up(KeyEvent.KEYCODE_PROG_GREEN)
+        assertEquals(TvColorAction.INCREASE, down(KeyEvent.KEYCODE_PROG_GREEN).action)
+    }
 }

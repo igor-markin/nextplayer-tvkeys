@@ -14,8 +14,8 @@ internal class TvColorKeyHandler {
     fun handle(keyCode: Int, action: Int, repeatCount: Int, heldMillis: Long): TvColorKeyResult {
         if (keyCode !in COLOR_KEYS) return TvColorKeyResult(false)
         if (action == KeyEvent.ACTION_UP) {
-            pressed.remove(keyCode)
-            val reset = keyCode == KeyEvent.KEYCODE_PROG_RED && heldMillis >= HOLD_MILLIS && !redResetSent
+            val wasPressed = pressed.remove(keyCode)
+            val reset = wasPressed && keyCode == KeyEvent.KEYCODE_PROG_RED && heldMillis >= HOLD_MILLIS && !redResetSent
             if (keyCode == KeyEvent.KEYCODE_PROG_RED) redResetSent = false
             return TvColorKeyResult(true, TvColorAction.RESET.takeIf { reset })
         }

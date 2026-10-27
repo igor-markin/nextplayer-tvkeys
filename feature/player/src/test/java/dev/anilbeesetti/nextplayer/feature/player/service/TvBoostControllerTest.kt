@@ -25,13 +25,13 @@ class TvBoostControllerTest {
         val boost = TvBoostController { effect }
         boost.updateAudioSession(7, true)
         assertEquals(0, effect.gain)
-        assertFalse(boost.adjust(50))
+        assertFalse(boost.adjust(boost.generation, 50))
         boost.setActive(true)
-        assertTrue(boost.adjust(50))
+        assertTrue(boost.adjust(boost.generation, 50))
         assertEquals(50, effect.gain)
         boost.setActive(false)
         assertEquals(0, effect.gain)
-        assertFalse(boost.adjust(50))
+        assertFalse(boost.adjust(boost.generation, 50))
     }
 
     @Test
@@ -39,15 +39,15 @@ class TvBoostControllerTest {
         val boost = TvBoostController { Effect() }
         boost.updateAudioSession(7, true)
         boost.setActive(true)
-        repeat(45) { assertTrue(boost.adjust(50)) }
+        repeat(45) { assertTrue(boost.adjust(boost.generation, 50)) }
         assertEquals(2000, boost.gainMillibels)
-        boost.adjust(-50)
+        boost.adjust(boost.generation, -50)
         assertEquals(1950, boost.gainMillibels)
-        boost.adjust(9999)
+        boost.adjust(boost.generation, 9999)
         assertEquals(2000, boost.gainMillibels)
-        boost.adjust(0, reset = true)
+        boost.adjust(boost.generation, 0, reset = true)
         assertEquals(0, boost.gainMillibels)
-        repeat(3) { boost.adjust(-50) }
+        repeat(3) { boost.adjust(boost.generation, -50) }
         assertEquals(0, boost.gainMillibels)
     }
 
@@ -57,13 +57,13 @@ class TvBoostControllerTest {
         val boost = TvBoostController { Effect().also { effects.add(it) } }
         boost.setActive(true)
         boost.updateAudioSession(7, true)
-        boost.adjust(50)
+        boost.adjust(boost.generation, 50)
         boost.updateAudioSession(8, true)
         assertTrue(effects[0].released)
         assertEquals(0, effects[0].gain)
         assertEquals(0, effects[1].gain)
         assertEquals(0, boost.gainMillibels)
-        boost.adjust(50)
+        boost.adjust(boost.generation, 50)
         boost.close()
         assertEquals(0, effects[1].gain)
         assertTrue(effects[1].released)
@@ -77,12 +77,71 @@ class TvBoostControllerTest {
         boost.setActive(true)
         boost.updateAudioSession(7, true)
         effect.hasControl = false
-        assertFalse(boost.adjust(50))
+        assertFalse(boost.adjust(boost.generation, 50))
         effect.hasControl = true
         effect.fail = true
-        assertFalse(boost.adjust(50))
+        assertFalse(boost.adjust(boost.generation, 50))
         assertEquals(0, boost.gainMillibels)
         assertTrue(effect.released)
         assertFalse(boost.isSupported)
+    }
+
+    @Test
+    fun resetInvalidatesAlreadyQueuedCommandsEvenWhenGainWasZero() {
+        val boost = TvBoostController { Effect() }
+        boost.updateAudioSession(7, true)
+        boost.setActive(true)
+        val queuedGeneration = boost.generation
+        boost.reset()
+        assertFalse(boost.adjust(queuedGeneration, 50))
+        assertEquals(0, boost.gainMillibels)
+        assertTrue(boost.adjust(boost.generation, 50))
+        val beforeExplicitReset = boost.generation
+        assertTrue(boost.adjust(beforeExplicitReset, 0, reset = true))
+        assertFalse(boost.adjust(beforeExplicitReset, 50))
+        assertEquals(0, boost.gainMillibels)
+    }
+
+    @Test
+    fun sessionChangeRejectsOldCommandsWithoutClearingFreshGain() {
+        val boost = TvBoostController { Effect() }
+        boost.setActive(true)
+        boost.updateAudioSession(7, true)
+        val oldSession = boost.generation
+        boost.updateAudioSession(8, true)
+        assertFalse(boost.adjust(oldSession, 50))
+        assertEquals(0, boost.gainMillibels)
+        assertTrue(boost.adjust(boost.generation, 50))
+        assertFalse(boost.adjust(oldSession, 0, reset = true))
+        assertEquals(50, boost.gainMillibels)
+    }
+
+    @Test
+    fun pauseResumeAndCloseRejectCommandsFromEarlierLifecycle() {
+        val boost = TvBoostController { Effect() }
+        boost.updateAudioSession(7, true)
+        boost.setActive(true)
+        val beforePause = boost.generation
+        boost.setActive(false)
+        boost.setActive(true)
+        assertFalse(boost.adjust(beforePause, 50))
+        assertEquals(0, boost.gainMillibels)
+        val beforeClose = boost.generation
+        boost.close()
+        assertFalse(boost.adjust(beforeClose, 50))
+        assertEquals(0, boost.gainMillibels)
+    }
+
+    @Test
+    fun resetPublishesNewGenerationOnlyAfterGainIsCleared() {
+        val published = mutableListOf<Pair<Long, Int>>()
+        lateinit var boost: TvBoostController
+        boost = TvBoostController(onGenerationChanged = { published += boost.generation to boost.gainMillibels }) { Effect() }
+        boost.updateAudioSession(7, true)
+        boost.setActive(true)
+        boost.adjust(boost.generation, 50)
+        val previousGeneration = boost.generation
+        boost.reset()
+        assertEquals(previousGeneration + 1 to 0, published.last())
     }
 }

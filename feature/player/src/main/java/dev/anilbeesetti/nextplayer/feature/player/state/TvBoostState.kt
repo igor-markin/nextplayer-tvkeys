@@ -20,10 +20,7 @@ import androidx.media3.session.SessionResult
 import dev.anilbeesetti.nextplayer.core.ui.R
 import dev.anilbeesetti.nextplayer.feature.player.service.CustomCommands
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.guava.await
-import kotlinx.coroutines.launch
 
 @Composable
 @OptIn(UnstableApi::class)
@@ -46,53 +43,70 @@ internal class TvBoostState(
     scope: CoroutineScope,
 ) {
     private val keys = TvColorKeyHandler()
-    private val pending = Channel<Pair<Int, TvColorAction>>(Channel.UNLIMITED)
     private var active = false
-    private var epoch = 0
+    private var keyContext: TvBoostContext? = null
     private var feedback: Toast? = null
-
-    init {
-        scope.launch {
-            for ((requestEpoch, action) in pending) {
-                if (!active || requestEpoch != epoch) continue
-                val args = Bundle().apply {
-                    putInt(CustomCommands.TV_BOOST_DELTA_KEY, if (action == TvColorAction.INCREASE) 50 else -50)
-                    putBoolean(CustomCommands.TV_BOOST_RESET_KEY, action == TvColorAction.RESET)
-                }
-                try {
-                    val result = controller.sendCustomCommand(CustomCommands.ADJUST_TV_BOOST.sessionCommand, args).await()
-                    if (!active || requestEpoch != epoch) continue
-                    val text = if (result.resultCode != SessionResult.RESULT_SUCCESS) {
-                        context.getString(R.string.tv_boost_unavailable)
-                    } else {
-                        val gain = result.extras.getInt(CustomCommands.LOUDNESS_GAIN_KEY, 0)
-                        Log.i("TvKeys", "Applied gain millibels=$gain")
-                        if (gain == 0) context.getString(R.string.tv_boost_zero) else context.getString(R.string.tv_boost_gain, gain / 100.0f)
-                    }
-                    showFeedback(text)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    if (active && requestEpoch == epoch) showFeedback(context.getString(R.string.tv_boost_unavailable))
-                }
+    private val requests = TvBoostCommandQueue(
+        scope = scope,
+        currentContext = ::currentContext,
+        send = { snapshot, action ->
+            val args = Bundle().apply {
+                putLong(CustomCommands.TV_BOOST_GENERATION_KEY, snapshot.generation)
+                putString(CustomCommands.TV_BOOST_MEDIA_ID_KEY, snapshot.mediaId)
+                putInt(CustomCommands.TV_BOOST_DELTA_KEY, if (action == TvColorAction.INCREASE) 50 else -50)
+                putBoolean(CustomCommands.TV_BOOST_RESET_KEY, action == TvColorAction.RESET)
             }
-        }
+            val result = controller.sendCustomCommand(CustomCommands.ADJUST_TV_BOOST.sessionCommand, args).await()
+            TvBoostReply(
+                context = TvBoostContext(
+                    result.extras.getLong(CustomCommands.TV_BOOST_GENERATION_KEY, -1),
+                    result.extras.getString(CustomCommands.TV_BOOST_MEDIA_ID_KEY).orEmpty(),
+                ),
+                gainMillibels = result.extras.getInt(CustomCommands.LOUDNESS_GAIN_KEY, 0),
+                successful = result.resultCode == SessionResult.RESULT_SUCCESS,
+            )
+        },
+        onReply = { reply ->
+            val text = if (!reply.successful) {
+                context.getString(R.string.tv_boost_unavailable)
+            } else {
+                val gain = reply.gainMillibels
+                Log.i("TvKeys", "Applied gain millibels=$gain")
+                if (gain == 0) context.getString(R.string.tv_boost_zero) else context.getString(R.string.tv_boost_gain, gain / 100.0f)
+            }
+            showFeedback(text)
+        },
+    )
+
+    private fun currentContext(): TvBoostContext? {
+        if (!controller.isConnected) return null
+        val mediaId = controller.currentMediaItem?.mediaId ?: return null
+        val extras = controller.sessionExtras
+        if (extras.getString(CustomCommands.TV_BOOST_MEDIA_ID_KEY) != mediaId) return null
+        val generation = extras.getLong(CustomCommands.TV_BOOST_GENERATION_KEY, -1).takeIf { it >= 0 } ?: return null
+        return TvBoostContext(generation, mediaId)
     }
 
     fun handleKey(event: KeyEvent): TvColorKeyResult {
         if (!active || controller.currentMediaItem == null) return TvColorKeyResult(false)
+        val snapshot = currentContext()
+        if (keyContext != snapshot) {
+            keyContext = snapshot
+            keys.clear()
+        }
         val keyCode = TvColorKeyHandler.normalize(event.keyCode, event.scanCode, event.device?.vendorId ?: 0, event.device?.productId ?: 0)
         val result = keys.handle(keyCode, event.action, event.repeatCount, event.eventTime - event.downTime)
         if (result.consumed) Log.i("TvKeys", "Key code=${event.keyCode} scan=${event.scanCode} action=${event.action} repeat=${event.repeatCount} mapped=$keyCode")
         result.action?.takeIf { it == TvColorAction.INCREASE || it == TvColorAction.DECREASE || it == TvColorAction.RESET }?.let {
-            pending.trySend(epoch to it)
+            requests.submit(it)
         }
         return result
     }
 
     fun setActive(value: Boolean) {
-        epoch++
         active = value
+        requests.setActive(value)
+        keyContext = null
         keys.clear()
         if (!value) {
             feedback?.cancel()
@@ -108,7 +122,7 @@ internal class TvBoostState(
 
     fun close() {
         setActive(false)
-        pending.close()
+        requests.close()
     }
 
     private fun showFeedback(text: String) {

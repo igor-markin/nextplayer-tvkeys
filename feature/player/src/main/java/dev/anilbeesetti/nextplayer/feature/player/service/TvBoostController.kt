@@ -7,10 +7,15 @@ internal interface TvBoostEffect {
 }
 
 /** Owns session-local gain only. It has no dependency on system stream volume. */
-internal class TvBoostController(private val createEffect: (Int) -> TvBoostEffect) {
+internal class TvBoostController(
+    private val onGenerationChanged: () -> Unit = {},
+    private val createEffect: (Int) -> TvBoostEffect,
+) {
     var gainMillibels: Int = 0
         private set
     var active: Boolean = false
+        private set
+    var generation: Long = 0
         private set
     private var effect: TvBoostEffect? = null
 
@@ -19,28 +24,36 @@ internal class TvBoostController(private val createEffect: (Int) -> TvBoostEffec
 
     fun setActive(value: Boolean) {
         active = value
-        if (!value) reset()
+        reset()
     }
 
     fun updateAudioSession(sessionId: Int, enabled: Boolean) {
         clearEffect()
-        if (sessionId <= 0 || !enabled) return
-        try {
-            effect = createEffect(sessionId)
-            check(effect?.applyGain(0) == 0)
-        } catch (_: Exception) {
-            clearEffect()
+        if (sessionId > 0 && enabled) {
+            try {
+                effect = createEffect(sessionId)
+                check(effect?.applyGain(0) == 0)
+            } catch (_: Exception) {
+                clearEffect()
+            }
         }
+        advanceGeneration()
     }
 
-    fun adjust(deltaMillibels: Int, reset: Boolean = false): Boolean = setGain(
-        if (reset) 0 else gainMillibels + deltaMillibels.coerceIn(-STEP_MILLIBELS, STEP_MILLIBELS),
-    )
+    fun adjust(expectedGeneration: Long, deltaMillibels: Int, reset: Boolean = false): Boolean {
+        // Validate at execution time, not when the controller or transport queued the press.
+        if (expectedGeneration != generation) return false
+        if (reset) {
+            reset()
+            return true
+        }
+        return setGain(gainMillibels + deltaMillibels.coerceIn(-STEP_MILLIBELS, STEP_MILLIBELS))
+    }
 
     fun setGain(requestedMillibels: Int): Boolean {
         val requested = requestedMillibels.coerceIn(0, MAX_MILLIBELS)
         if (requested == 0) {
-            reset()
+            clearGain()
             return true
         }
         if (!active || !isSupported) {
@@ -54,11 +67,17 @@ internal class TvBoostController(private val createEffect: (Int) -> TvBoostEffec
             true
         } catch (_: Exception) {
             clearEffect()
+            advanceGeneration()
             false
         }
     }
 
     fun reset() {
+        clearGain()
+        advanceGeneration()
+    }
+
+    private fun clearGain() {
         gainMillibels = 0
         try {
             check(effect?.applyGain(0)?.let { it == 0 } != false)
@@ -70,6 +89,12 @@ internal class TvBoostController(private val createEffect: (Int) -> TvBoostEffec
     fun close() {
         active = false
         clearEffect()
+        advanceGeneration()
+    }
+
+    private fun advanceGeneration() {
+        generation++
+        onGenerationChanged()
     }
 
     private fun clearEffect() {
