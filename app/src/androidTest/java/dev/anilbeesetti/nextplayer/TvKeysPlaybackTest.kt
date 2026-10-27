@@ -107,6 +107,7 @@ class TvKeysPlaybackTest {
     @Test
     fun colorsControlSessionGainAndSelectorsWithoutChangingSystemVolume() {
         assumeTrue(context.isTelevision)
+        context.getSharedPreferences("tv_keys_boost", 0).edit().putInt("target_millibels", 0).commit()
         val audio = context.getSystemService(AudioManager::class.java)
         val originalVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
         val scenario = ActivityScenario.launch<PlayerActivity>(playbackIntent("tvkeys-a.mp4"))
@@ -122,21 +123,21 @@ class TvKeysPlaybackTest {
                     .getBoolean(CustomCommands.IS_LOUDNESS_GAIN_SUPPORTED_KEY)
             }
             checkpoint("initial", controller, 0, originalVolume)
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PROG_GREEN)
-            awaitCondition { gain(controller) == 50 }
-            checkpoint("green", controller, 50, originalVolume)
-            val greenDown = SystemClock.uptimeMillis()
-            instrumentation.sendKeySync(KeyEvent(greenDown, greenDown, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PROG_GREEN, 0))
-            repeat(4) { index ->
-                instrumentation.sendKeySync(KeyEvent(greenDown, SystemClock.uptimeMillis(), KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PROG_GREEN, index + 1))
-            }
-            instrumentation.sendKeySync(KeyEvent(greenDown, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PROG_GREEN, 0))
-            awaitCondition { gain(controller) == 100 }
-            checkpoint("green-repeat-ignored", controller, 100, originalVolume)
-
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PROG_RED)
             awaitCondition { gain(controller) == 50 }
-            checkpoint("red", controller, 50, originalVolume)
+            checkpoint("plus", controller, 50, originalVolume)
+            val plusDown = SystemClock.uptimeMillis()
+            instrumentation.sendKeySync(KeyEvent(plusDown, plusDown, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PROG_RED, 0))
+            repeat(4) { index ->
+                instrumentation.sendKeySync(KeyEvent(plusDown, SystemClock.uptimeMillis(), KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PROG_RED, index + 1))
+            }
+            instrumentation.sendKeySync(KeyEvent(plusDown, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PROG_RED, 0))
+            awaitCondition { gain(controller) == 100 }
+            checkpoint("hardware-repeat-ignored", controller, 100, originalVolume)
+
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PROG_GREEN)
+            awaitCondition { gain(controller) == 50 }
+            checkpoint("minus", controller, 50, originalVolume)
 
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PROG_YELLOW)
             compose.waitForIdle()
@@ -149,21 +150,21 @@ class TvKeysPlaybackTest {
             checkpoint("blue-subtitle-menu", controller, 50, originalVolume)
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
 
-            val redDown = SystemClock.uptimeMillis()
-            instrumentation.sendKeySync(KeyEvent(redDown, redDown, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PROG_RED, 0))
+            val minusDown = SystemClock.uptimeMillis()
+            instrumentation.sendKeySync(KeyEvent(minusDown, minusDown, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PROG_GREEN, 0))
             SystemClock.sleep(700)
-            instrumentation.sendKeySync(KeyEvent(redDown, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PROG_RED, 0))
+            instrumentation.sendKeySync(KeyEvent(minusDown, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, KeyEvent.KEYCODE_PROG_GREEN, 0))
             awaitCondition { gain(controller) == 0 }
-            checkpoint("red-hold-reset", controller, 0, originalVolume)
+            checkpoint("minus-hold-zero", controller, 0, originalVolume)
 
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PROG_GREEN)
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PROG_RED)
             awaitCondition { gain(controller) == 50 }
             scenario.onActivity { it.startActivity(playbackIntent("tvkeys-b.mp4")) }
             awaitCondition { main { controller.currentMediaItem?.localConfiguration?.uri.toString().contains("tvkeys-b.mp4") } }
-            awaitCondition { gain(controller) == 0 }
-            checkpoint("movie-change-reset", controller, 0, originalVolume)
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PROG_GREEN)
             awaitCondition { gain(controller) == 50 }
+            checkpoint("movie-change-restored", controller, 50, originalVolume)
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PROG_RED)
+            awaitCondition { gain(controller) == 100 }
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
             awaitCondition { gain(controller) == 0 }
             checkpoint("background-reset", controller, 0, originalVolume)
@@ -177,6 +178,7 @@ class TvKeysPlaybackTest {
     @Test
     fun aNewAudioSessionCannotInheritGainFromAStoppedSession() {
         assumeTrue(context.isTelevision)
+        context.getSharedPreferences("tv_keys_boost", 0).edit().putInt("target_millibels", 0).commit()
         val originalVolume = context.getSystemService(AudioManager::class.java).getStreamVolume(AudioManager.STREAM_MUSIC)
         val firstScenario = ActivityScenario.launch<PlayerActivity>(playbackIntent("tvkeys-session-a.mp4"))
         val first = connect()
@@ -185,7 +187,7 @@ class TvKeysPlaybackTest {
             awaitReady(first)
             firstSessionId = main { first.audioSessionId }
             checkpoint("first-session-initial", first, 0, originalVolume)
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PROG_GREEN)
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PROG_RED)
             awaitCondition("first session gains half a decibel") { gain(first) == 50 }
             checkpoint("first-session-boosted", first, 50, originalVolume)
             command(first, CustomCommands.STOP_PLAYER_SESSION)
@@ -200,10 +202,10 @@ class TvKeysPlaybackTest {
         try {
             awaitReady(second)
             assertTrue("native audio session must actually change", main { second.audioSessionId != firstSessionId })
-            checkpoint("new-audio-session-reset", second, 0, originalVolume)
-            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PROG_GREEN)
-            awaitCondition("fresh key works in new session") { gain(second) == 50 }
-            checkpoint("new-session-fresh-press", second, 50, originalVolume)
+            checkpoint("new-audio-session-restored", second, 50, originalVolume)
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_PROG_RED)
+            awaitCondition("fresh key works in new session") { gain(second) == 100 }
+            checkpoint("new-session-fresh-press", second, 100, originalVolume)
         } finally {
             if (main { second.isConnected }) command(second, CustomCommands.STOP_PLAYER_SESSION)
             secondScenario.close()

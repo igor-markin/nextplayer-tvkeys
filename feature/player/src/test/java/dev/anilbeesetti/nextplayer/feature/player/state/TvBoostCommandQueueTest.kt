@@ -24,6 +24,7 @@ class TvBoostCommandQueueTest {
         }.apply {
             updateAudioSession(7, true)
             setActive(true)
+            setReady(true)
         }
         var mediaId = "movie-a"
         val serverContext get() = TvBoostContext(boost.generation, mediaId)
@@ -188,5 +189,29 @@ class TvBoostCommandQueueTest {
         session.queue.submit(TvColorAction.INCREASE)
         runCurrent()
         assertEquals(50, session.boost.gainMillibels)
+    }
+
+    @Test
+    fun keyUpDiscardsQueuedRepeatsWithoutDiscardingTheInitialTap() = runTest {
+        val session = Session(backgroundScope)
+        val release = CompletableDeferred<Unit>()
+        session.beforeExecution = { release.await() }
+        session.queue.submit(TvColorAction.INCREASE)
+        runCurrent()
+        repeat(100) { session.queue.submit(TvColorAction.INCREASE, repeated = true) }
+        session.queue.cancelRepeats()
+        release.complete(Unit)
+        runCurrent()
+        assertEquals(1, session.sent.size)
+        assertEquals(50, session.boost.targetMillibels)
+    }
+
+    @Test
+    fun shortTapSurvivesImmediateKeyUpBeforeTheWorkerRuns() = runTest {
+        val session = Session(backgroundScope)
+        session.queue.submit(TvColorAction.INCREASE)
+        session.queue.cancelRepeats()
+        runCurrent()
+        assertEquals(50, session.boost.targetMillibels)
     }
 }

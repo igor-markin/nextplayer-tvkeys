@@ -12,6 +12,7 @@ import dev.anilbeesetti.nextplayer.core.model.Video
 import dev.anilbeesetti.nextplayer.core.model.VideoContentScale
 import dev.anilbeesetti.nextplayer.core.ui.base.MviViewModel
 import dev.anilbeesetti.nextplayer.feature.player.model.DecoderServiceState
+import dev.anilbeesetti.nextplayer.feature.player.model.TvBoostStatus
 import dev.anilbeesetti.nextplayer.feature.player.state.SubtitleOptionsEvent
 import dev.anilbeesetti.nextplayer.feature.player.state.VideoZoomEvent
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderMode
@@ -66,6 +67,7 @@ class PlayerViewModel(
             is PlayerAction.SetAudioDecoderMode -> output.setAudioDecoderMode(action.mode)
             is PlayerAction.TryDecoderFallback -> output.tryDecoderFallback()
             is PlayerAction.UpdateDecoderServiceState -> stateInternal.update { it.copy(decoderServiceState = action.state) }
+            is PlayerAction.UpdateTvBoostStatus -> stateInternal.update { it.copy(tvBoostStatus = action.state) }
             is PlayerAction.UpdatePlayWhenReady -> stateInternal.update { it.copy(playWhenReady = action.playWhenReady) }
             is PlayerAction.UpdatePlayerBrightness -> updatePlayerBrightness(action.value)
             is PlayerAction.SetLoopMode -> setLoopMode(action.loopMode)
@@ -149,6 +151,7 @@ data class PlayerUiState(
     val playerPreferences: PlayerPreferences = PlayerPreferences(),
     val playWhenReady: Boolean = true,
     val decoderServiceState: DecoderServiceState = DecoderServiceState(),
+    val tvBoostStatus: TvBoostStatus? = null,
 )
 
 sealed interface PlayerAction {
@@ -160,6 +163,7 @@ sealed interface PlayerAction {
     data class SetAudioDecoderMode(val mode: DecoderMode) : PlayerAction
     data object TryDecoderFallback : PlayerAction
     data class UpdateDecoderServiceState(val state: DecoderServiceState) : PlayerAction
+    data class UpdateTvBoostStatus(val state: TvBoostStatus?) : PlayerAction
     data class UpdatePlayWhenReady(val playWhenReady: Boolean) : PlayerAction
     data class UpdatePlayerBrightness(val value: Float) : PlayerAction
     data class SetLoopMode(val loopMode: LoopMode) : PlayerAction

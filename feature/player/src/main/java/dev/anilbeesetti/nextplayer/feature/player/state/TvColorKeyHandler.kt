@@ -9,45 +9,35 @@ internal data class TvColorKeyResult(val consumed: Boolean, val action: TvColorA
 /** Called only by the foreground TV video controls, never by the library or a global receiver. */
 internal class TvColorKeyHandler {
     private val pressed = mutableSetOf<Int>()
-    private var redResetSent = false
 
     fun handle(keyCode: Int, action: Int, repeatCount: Int, heldMillis: Long): TvColorKeyResult {
         if (keyCode !in COLOR_KEYS) return TvColorKeyResult(false)
         if (action == KeyEvent.ACTION_UP) {
-            val wasPressed = pressed.remove(keyCode)
-            val reset = wasPressed && keyCode == KeyEvent.KEYCODE_PROG_RED && heldMillis >= HOLD_MILLIS && !redResetSent
-            if (keyCode == KeyEvent.KEYCODE_PROG_RED) redResetSent = false
-            return TvColorKeyResult(true, TvColorAction.RESET.takeIf { reset })
+            pressed.remove(keyCode)
+            return TvColorKeyResult(true)
         }
         if (action != KeyEvent.ACTION_DOWN) return TvColorKeyResult(true)
         val fresh = pressed.add(keyCode) && repeatCount == 0
         if (fresh) {
-            if (keyCode == KeyEvent.KEYCODE_PROG_RED) redResetSent = false
             return TvColorKeyResult(
                 true,
                 when (keyCode) {
-                    KeyEvent.KEYCODE_PROG_GREEN -> TvColorAction.INCREASE
-                    KeyEvent.KEYCODE_PROG_RED -> TvColorAction.DECREASE
+                    KeyEvent.KEYCODE_PROG_RED -> TvColorAction.INCREASE
+                    KeyEvent.KEYCODE_PROG_GREEN -> TvColorAction.DECREASE
                     KeyEvent.KEYCODE_PROG_YELLOW -> TvColorAction.AUDIO
                     else -> TvColorAction.SUBTITLES
                 },
             )
-        }
-        if (keyCode == KeyEvent.KEYCODE_PROG_RED && heldMillis >= HOLD_MILLIS && !redResetSent) {
-            redResetSent = true
-            return TvColorKeyResult(true, TvColorAction.RESET)
         }
         return TvColorKeyResult(true)
     }
 
     fun clear() {
         pressed.clear()
-        redResetSent = false
     }
 
     companion object {
-        const val HOLD_MILLIS = 600L
-        /** Scan codes captured from the owner's Xiaomi RC (2717:32b9), not generic media-key aliases. */
+        /** Measured Xiaomi colors; owner chose upper red=plus and lower green=minus. */
         fun normalize(keyCode: Int, scanCode: Int, vendorId: Int, productId: Int): Int {
             if (vendorId != 0x2717 || productId != 0x32b9) return keyCode
             return when (scanCode) {

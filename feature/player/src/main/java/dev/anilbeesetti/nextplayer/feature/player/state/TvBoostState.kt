@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.annotation.OptIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
@@ -19,16 +20,18 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionResult
 import dev.anilbeesetti.nextplayer.core.ui.R
 import dev.anilbeesetti.nextplayer.feature.player.service.CustomCommands
+import dev.anilbeesetti.nextplayer.feature.player.model.TvBoostStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.guava.await
 
 @Composable
 @OptIn(UnstableApi::class)
-internal fun rememberTvBoostState(player: Player): TvBoostState? {
+internal fun rememberTvBoostState(player: Player, status: TvBoostStatus?): TvBoostState? {
     val controller = player as? MediaController ?: return null
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val state = remember(controller) { TvBoostState(controller, context, scope) }
+    SideEffect { state.onStatus(status) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { state.setActive(true) }
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) { state.setActive(false) }
     DisposableEffect(state) { onDispose { state.close() } }
@@ -46,6 +49,8 @@ internal class TvBoostState(
     private var active = false
     private var keyContext: TvBoostContext? = null
     private var feedback: Toast? = null
+    private var restoredContext: TvBoostContext? = null
+    private var latestTarget = 0
     private val requests = TvBoostCommandQueue(
         scope = scope,
         currentContext = ::currentContext,
@@ -64,19 +69,41 @@ internal class TvBoostState(
                 ),
                 gainMillibels = result.extras.getInt(CustomCommands.LOUDNESS_GAIN_KEY, 0),
                 successful = result.resultCode == SessionResult.RESULT_SUCCESS,
+                targetMillibels = result.extras.getInt(CustomCommands.TV_BOOST_TARGET_KEY, 0),
+                available = result.extras.getBoolean(CustomCommands.TV_BOOST_AVAILABLE_KEY),
             )
         },
         onReply = { reply ->
             val text = if (!reply.successful) {
                 context.getString(R.string.tv_boost_unavailable)
+            } else if (!reply.available) {
+                context.getString(R.string.tv_boost_inactive, reply.targetMillibels / 100.0f)
             } else {
-                val gain = reply.gainMillibels
+                val gain = reply.targetMillibels
                 Log.i("TvKeys", "Applied gain millibels=$gain")
                 if (gain == 0) context.getString(R.string.tv_boost_zero) else context.getString(R.string.tv_boost_gain, gain / 100.0f)
             }
             showFeedback(text)
         },
     )
+    private val repeater = TvBoostKeyRepeater(scope, ::currentContext) { requests.submit(it, repeated = true) }
+
+    fun onStatus(status: TvBoostStatus?) {
+        if (status != null) {
+            latestTarget = status.targetMillibels
+            if (repeater.reachedBound(latestTarget)) stopRepeating()
+        }
+        val snapshot = currentContext()
+        if (keyContext != snapshot) {
+            stopRepeating()
+            keys.clear()
+            keyContext = snapshot
+        }
+        if (active && status?.active == true && status.available && snapshot != null && restoredContext != snapshot) {
+            restoredContext = snapshot
+            showFeedback(context.getString(R.string.tv_boost_restored, status.targetMillibels / 100.0f))
+        }
+    }
 
     private fun currentContext(): TvBoostContext? {
         if (!controller.isConnected) return null
@@ -91,24 +118,39 @@ internal class TvBoostState(
         if (!active || controller.currentMediaItem == null) return TvColorKeyResult(false)
         val snapshot = currentContext()
         if (keyContext != snapshot) {
+            stopRepeating()
             keyContext = snapshot
             keys.clear()
         }
         val keyCode = TvColorKeyHandler.normalize(event.keyCode, event.scanCode, event.device?.vendorId ?: 0, event.device?.productId ?: 0)
+        if (event.isCanceled) {
+            stopRepeating()
+            keys.clear()
+            return keys.handle(keyCode, KeyEvent.ACTION_UP, 0, 0)
+        }
+        if (event.action == KeyEvent.ACTION_UP && repeater.release(keyCode)) requests.cancelRepeats()
         val result = keys.handle(keyCode, event.action, event.repeatCount, event.eventTime - event.downTime)
         if (result.consumed) Log.i("TvKeys", "Key code=${event.keyCode} scan=${event.scanCode} action=${event.action} repeat=${event.repeatCount} mapped=$keyCode")
         result.action?.takeIf { it == TvColorAction.INCREASE || it == TvColorAction.DECREASE || it == TvColorAction.RESET }?.let {
             requests.submit(it)
+            if (it != TvColorAction.RESET) {
+                requests.cancelRepeats()
+                repeater.start(keyCode, it)
+                if (repeater.reachedBound(latestTarget)) stopRepeating()
+            }
         }
+        if (result.action == TvColorAction.AUDIO || result.action == TvColorAction.SUBTITLES) stopRepeating()
         return result
     }
 
     fun setActive(value: Boolean) {
         active = value
         requests.setActive(value)
+        stopRepeating()
         keyContext = null
         keys.clear()
         if (!value) {
+            restoredContext = null
             feedback?.cancel()
             feedback = null
         }
@@ -123,6 +165,11 @@ internal class TvBoostState(
     fun close() {
         setActive(false)
         requests.close()
+    }
+
+    private fun stopRepeating() {
+        repeater.stop()
+        requests.cancelRepeats()
     }
 
     private fun showFeedback(text: String) {

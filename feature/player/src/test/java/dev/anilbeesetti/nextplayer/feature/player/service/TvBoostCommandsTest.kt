@@ -3,6 +3,7 @@ package dev.anilbeesetti.nextplayer.feature.player.service
 import android.os.Bundle
 import android.os.Looper
 import android.os.Process
+import java.util.concurrent.TimeUnit
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
@@ -50,6 +51,14 @@ class TvBoostCommandsTest {
         assertEquals(0, boost.gainMillibels)
     }
 
+    @Test
+    fun failedPersistenceRestoresPreviousTargetAndReportsFailure() = withSession(save = { false }) { _, session, callback, boost ->
+        val result = send(session, callback, args(boost.generation, "movie-a"))
+        assertEquals(SessionResult.RESULT_ERROR_INVALID_STATE, result.resultCode)
+        assertEquals(0, boost.targetMillibels)
+        assertEquals(0, boost.gainMillibels)
+    }
+
     private fun args(generation: Long, mediaId: String) = Bundle().apply {
         putLong(CustomCommands.TV_BOOST_GENERATION_KEY, generation)
         putString(CustomCommands.TV_BOOST_MEDIA_ID_KEY, mediaId)
@@ -59,11 +68,15 @@ class TvBoostCommandsTest {
     private fun send(session: MediaSession, callback: MediaSession.Callback, args: Bundle, uid: Int = Process.myUid()): SessionResult {
         val controller = MediaSession.ControllerInfo.createTestOnlyControllerInfo("test", 0, uid, 0, 0, true, Bundle.EMPTY, true)
         val future = callback.onCustomCommand(session, controller, CustomCommands.ADJUST_TV_BOOST.sessionCommand, args)
-        shadowOf(Looper.getMainLooper()).idle()
-        return future.get()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (!future.isDone && System.nanoTime() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(1)
+        }
+        return future.get(1, TimeUnit.SECONDS)
     }
 
-    private fun withSession(check: (ExoPlayer, MediaSession, MediaSession.Callback, TvBoostController) -> Unit) {
+    private fun withSession(save: (Int) -> Boolean = { true }, check: (ExoPlayer, MediaSession, MediaSession.Callback, TvBoostController) -> Unit) {
         val player = ExoPlayer.Builder(RuntimeEnvironment.getApplication()).build()
         player.setMediaItem(MediaItem.Builder().setMediaId("movie-a").setUri("file:///unit/movie-a.mp4").build())
         val session = MediaSession.Builder(RuntimeEnvironment.getApplication(), player).build()
@@ -76,8 +89,14 @@ class TvBoostCommandsTest {
         }.apply {
             updateAudioSession(7, true)
             setActive(true)
+            setReady(true)
         }
-        val service = PlayerService()
+        val service = PlayerService().apply {
+            tvBoostStore = object : TvBoostStore {
+                override fun load() = 0
+                override fun save(value: Int) = save(value)
+            }
+        }
         PlayerService::class.java.getDeclaredField("mediaSession").apply { isAccessible = true }.set(service, session)
         PlayerService::class.java.getDeclaredField("tvBoost").apply { isAccessible = true }.set(service, boost)
         val callback = PlayerService::class.java.getDeclaredField("mediaSessionCallback").apply { isAccessible = true }.get(service) as MediaSession.Callback

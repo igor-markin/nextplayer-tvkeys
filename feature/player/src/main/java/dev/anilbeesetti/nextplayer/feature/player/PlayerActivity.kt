@@ -40,6 +40,7 @@ import dev.anilbeesetti.nextplayer.feature.player.service.setAudioDecoderMode
 import dev.anilbeesetti.nextplayer.feature.player.service.setVideoDecoderMode
 import dev.anilbeesetti.nextplayer.feature.player.service.stopPlayerSession
 import dev.anilbeesetti.nextplayer.feature.player.service.tryDecoderFallback
+import dev.anilbeesetti.nextplayer.feature.player.service.tvBoostStatus
 import dev.anilbeesetti.nextplayer.feature.player.state.rememberMediaController
 import dev.anilbeesetti.nextplayer.feature.player.utils.PlayerApi
 import dev.anilbeesetti.nextplayer.feature.player.utils.PlaylistPlaybackContract
@@ -127,12 +128,14 @@ class PlayerActivity : ComponentActivity() {
                 onBeforeRelease = ::onControllerStopped,
                 onExtrasChanged = { extras ->
                     viewModel.onAction(PlayerAction.UpdateDecoderServiceState(extras.decoderServiceState()))
+                    viewModel.onAction(PlayerAction.UpdateTvBoostStatus(extras.tvBoostStatus()))
                 },
             )
             LaunchedEffect(player) {
                 if (player == null || !player.isConnected) return@LaunchedEffect
                 mediaController = player
                 viewModel.onAction(PlayerAction.UpdateDecoderServiceState(player.sessionExtras.decoderServiceState()))
+                viewModel.onAction(PlayerAction.UpdateTvBoostStatus(player.sessionExtras.tvBoostStatus()))
                 player.addListener(playbackStateListener)
                 updateKeepScreenOnFlag()
                 startPlayback()

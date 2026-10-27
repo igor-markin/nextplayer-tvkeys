@@ -9,6 +9,7 @@ import dev.anilbeesetti.nextplayer.feature.player.model.DecoderRecoveryState
 import dev.anilbeesetti.nextplayer.feature.player.model.DecoderRecoveryStatus
 import dev.anilbeesetti.nextplayer.feature.player.model.DecoderServiceState
 import dev.anilbeesetti.nextplayer.feature.player.model.DecoderTrackType
+import dev.anilbeesetti.nextplayer.feature.player.model.TvBoostStatus
 import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.DecoderMode
 import kotlinx.coroutines.guava.await
 
@@ -56,6 +57,8 @@ enum class CustomCommands(val customAction: String) {
         const val TV_BOOST_RESET_KEY = "tv_boost_reset"
         const val TV_BOOST_GENERATION_KEY = "tv_boost_generation"
         const val TV_BOOST_MEDIA_ID_KEY = "tv_boost_media_id"
+        const val TV_BOOST_TARGET_KEY = "tv_boost_target"
+        const val TV_BOOST_AVAILABLE_KEY = "tv_boost_available"
         const val IS_LOUDNESS_GAIN_SUPPORTED_KEY = "is_loudness_gain_supported"
         const val VIDEO_DECODER_MODE_KEY = "video_decoder_mode"
         const val AUDIO_DECODER_MODE_KEY = "audio_decoder_mode"
@@ -63,6 +66,18 @@ enum class CustomCommands(val customAction: String) {
         const val DECODER_RECOVERY_TRACK_TYPE_KEY = "decoder_recovery_track_type"
         const val UNSUPPORTED_DECODER_MODE_KEY = "unsupported_decoder_mode"
     }
+}
+
+internal fun Bundle.tvBoostStatus(): TvBoostStatus? {
+    if (!containsKey(CustomCommands.TV_BOOST_GENERATION_KEY)) return null
+    return TvBoostStatus(
+        generation = getLong(CustomCommands.TV_BOOST_GENERATION_KEY),
+        mediaId = getString(CustomCommands.TV_BOOST_MEDIA_ID_KEY),
+        targetMillibels = getInt(CustomCommands.TV_BOOST_TARGET_KEY).coerceIn(0, 2000),
+        appliedMillibels = getInt(CustomCommands.LOUDNESS_GAIN_KEY).coerceIn(0, 2000),
+        active = getBoolean(CustomCommands.TV_BOOST_ACTIVE_KEY),
+        available = getBoolean(CustomCommands.TV_BOOST_AVAILABLE_KEY),
+    )
 }
 
 suspend fun MediaController.addAudioTrack(uri: Uri): Boolean {

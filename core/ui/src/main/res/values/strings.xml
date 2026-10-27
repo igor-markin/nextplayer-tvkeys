@@ -4,6 +4,8 @@
     <string name="tv_boost_gain">Boost: +%1$.1f dB</string>
     <string name="tv_boost_zero">Boost: 0 dB (100%, no boost)</string>
     <string name="tv_boost_unavailable">Audio boost is unavailable for this session</string>
+    <string name="tv_boost_inactive">Boost: +%1$.1f dB (inactive)</string>
+    <string name="tv_boost_restored">Restored boost: +%1$.1f dB</string>
     <string name="about_description">Version, support, credits</string>
     <string name="about_name">About</string>
     <string name="appearance_description">Adjust the app to your liking</string>

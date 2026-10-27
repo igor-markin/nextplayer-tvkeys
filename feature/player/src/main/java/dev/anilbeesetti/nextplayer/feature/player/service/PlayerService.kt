@@ -100,6 +100,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.koin.android.ext.android.inject
 
 @OptIn(UnstableApi::class)
@@ -124,6 +126,8 @@ class PlayerService : MediaSessionService() {
 
     private var isMediaItemReady = false
     private var pendingAudioSelection: Pair<String, Uri>? = null
+    internal var tvBoostStore: TvBoostStore? = null
+    private val tvBoostMutations = Mutex()
 
     private val tvBoost = TvBoostController(onGenerationChanged = ::publishTvBoostState) { sessionId ->
         val enhancer = LoudnessEnhancer(sessionId)
@@ -139,10 +143,10 @@ class PlayerService : MediaSessionService() {
     }
     private val audioDevices = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
-            if (addedDevices.any { it.isSink }) tvBoost.reset()
+            if (addedDevices.any { it.isSink }) tvBoost.recreateEffect()
         }
         override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
-            if (removedDevices.any { it.isSink }) tvBoost.reset()
+            if (removedDevices.any { it.isSink }) tvBoost.recreateEffect()
         }
     }
 
@@ -228,7 +232,7 @@ class PlayerService : MediaSessionService() {
     private val playbackStateListener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             super.onMediaItemTransition(mediaItem, reason)
-            tvBoost.reset()
+            tvBoost.invalidatePlayback()
             if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) return
             restoreDecoderChoices(mediaItem)
             isMediaItemReady = false
@@ -370,7 +374,7 @@ class PlayerService : MediaSessionService() {
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             super.onPlaybackStateChanged(playbackState)
-            if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) tvBoost.reset()
+            if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) tvBoost.invalidatePlayback()
 
             val player = mediaSession?.player
             val shouldResetPlaybackParameters = playbackState == Player.STATE_ENDED ||
@@ -415,6 +419,7 @@ class PlayerService : MediaSessionService() {
         }
 
         override fun onEvents(player: Player, events: Player.Events) {
+            tvBoost.setReady(player.currentMediaItem != null && player.playbackState == Player.STATE_READY)
             // Consecutive items can reuse the renderer without another first-frame callback.
             if (player.playbackState != Player.STATE_READY ||
                 !events.containsAny(Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_PLAYBACK_STATE_CHANGED)
@@ -622,31 +627,33 @@ class PlayerService : MediaSessionService() {
                 CustomCommands.SET_LOUDNESS_GAIN -> {
                     if (controller.uid != Process.myUid()) return@future SessionResult(SessionResult.RESULT_ERROR_PERMISSION_DENIED)
                     val gain = args.getInt(CustomCommands.LOUDNESS_GAIN_KEY, 0)
-                    val applied = tvBoost.setGain(gain)
+                    val applied = tvBoostMutations.withLock {
+                        changeTvBoost { tvBoost.setGain(gain) }
+                    }
                     return@future SessionResult(if (applied) SessionResult.RESULT_SUCCESS else SessionResult.RESULT_ERROR_INVALID_STATE)
                 }
 
                 CustomCommands.SET_TV_BOOST_ACTIVE -> {
                     if (controller.uid != Process.myUid()) return@future SessionResult(SessionResult.RESULT_ERROR_PERMISSION_DENIED)
                     tvBoost.setActive(args.getBoolean(CustomCommands.TV_BOOST_ACTIVE_KEY, false))
-                    return@future SessionResult(SessionResult.RESULT_SUCCESS)
+                    return@future SessionResult(SessionResult.RESULT_SUCCESS, tvBoostStateBundle(session))
                 }
 
                 CustomCommands.ADJUST_TV_BOOST -> {
                     if (controller.uid != Process.myUid()) return@future SessionResult(SessionResult.RESULT_ERROR_PERMISSION_DENIED)
-                    val mediaId = session.player.currentMediaItem?.mediaId
-                    val applied = mediaId != null && mediaId == args.getString(CustomCommands.TV_BOOST_MEDIA_ID_KEY) && tvBoost.adjust(
-                        args.getLong(CustomCommands.TV_BOOST_GENERATION_KEY, -1),
-                        args.getInt(CustomCommands.TV_BOOST_DELTA_KEY, 0),
-                        args.getBoolean(CustomCommands.TV_BOOST_RESET_KEY, false),
-                    )
+                    val applied = tvBoostMutations.withLock {
+                        val mediaId = session.player.currentMediaItem?.mediaId
+                        mediaId != null && mediaId == args.getString(CustomCommands.TV_BOOST_MEDIA_ID_KEY) && changeTvBoost {
+                            tvBoost.adjust(
+                                args.getLong(CustomCommands.TV_BOOST_GENERATION_KEY, -1),
+                                args.getInt(CustomCommands.TV_BOOST_DELTA_KEY, 0),
+                                args.getBoolean(CustomCommands.TV_BOOST_RESET_KEY, false),
+                            )
+                        }
+                    }
                     return@future SessionResult(
                         if (applied) SessionResult.RESULT_SUCCESS else SessionResult.RESULT_ERROR_INVALID_STATE,
-                        Bundle().apply {
-                            putInt(CustomCommands.LOUDNESS_GAIN_KEY, tvBoost.gainMillibels)
-                            putLong(CustomCommands.TV_BOOST_GENERATION_KEY, tvBoost.generation)
-                            putString(CustomCommands.TV_BOOST_MEDIA_ID_KEY, mediaId)
-                        },
+                        tvBoostStateBundle(session),
                     )
                 }
 
@@ -735,6 +742,8 @@ class PlayerService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
+        tvBoostStore = TvBoostPreferences(this)
+        tvBoost.restoreTarget(tvBoostStore!!.load())
         getSystemService(AudioManager::class.java).registerAudioDeviceCallback(audioDevices, Handler(Looper.getMainLooper()))
         decoderManager = DecoderManager()
         val renderersFactory = NextRenderersFactory(applicationContext).setDecoderManager(decoderManager)
@@ -931,10 +940,28 @@ class PlayerService : MediaSessionService() {
 
     private fun publishTvBoostState() {
         val session = mediaSession ?: return
-        session.sessionExtras = Bundle(session.sessionExtras).apply {
+        session.sessionExtras = tvBoostStateBundle(session)
+    }
+
+    private fun tvBoostStateBundle(session: MediaSession): Bundle = Bundle(session.sessionExtras).apply {
             putLong(CustomCommands.TV_BOOST_GENERATION_KEY, tvBoost.generation)
             putString(CustomCommands.TV_BOOST_MEDIA_ID_KEY, session.player.currentMediaItem?.mediaId)
+            putInt(CustomCommands.TV_BOOST_TARGET_KEY, tvBoost.targetMillibels)
+            putInt(CustomCommands.LOUDNESS_GAIN_KEY, tvBoost.gainMillibels)
+            putBoolean(CustomCommands.TV_BOOST_ACTIVE_KEY, tvBoost.active)
+            putBoolean(CustomCommands.TV_BOOST_AVAILABLE_KEY, tvBoost.isSupported)
+    }
+
+    private suspend fun changeTvBoost(change: () -> Boolean): Boolean {
+        val previous = tvBoost.targetMillibels
+        if (!change()) return false
+        val target = tvBoost.targetMillibels
+        if (previous == target) return true
+        val stored = withContext(Dispatchers.IO) {
+            runCatching { tvBoostStore?.save(target) == true }.getOrDefault(false)
         }
+        if (!stored) tvBoost.restoreTarget(previous)
+        return stored
     }
 
     private fun publishDecoderState() {

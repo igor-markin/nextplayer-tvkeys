@@ -5,16 +5,24 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -84,7 +92,7 @@ internal fun MediaPlayerContent(
         return
     }
     val context = LocalContext.current
-    val tvBoostState = if (isTvKeys) rememberTvBoostState(player) else null
+    val tvBoostState = if (isTvKeys) rememberTvBoostState(player, state.tvBoostStatus) else null
     val controlsVisibilityState = rememberControlsVisibilityState(
         player = player,
         hideAfter = playerPreferences.controllerAutoHideTimeout.seconds,
@@ -203,6 +211,21 @@ internal fun MediaPlayerContent(
                 }
             },
         )
+        if (isTvKeys && pictureInPictureState?.isInPictureInPictureMode != true) {
+            state.tvBoostStatus?.let { boost ->
+                Text(
+                    text = stringResource(
+                        if (boost.active && boost.available) R.string.tv_boost_gain else R.string.tv_boost_inactive,
+                        boost.targetMillibels / 100.0f,
+                    ),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(24.dp)
+                        .clip(RoundedCornerShape(6.dp)).background(Color.Black.copy(alpha = 0.65f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+        }
         if (volumeAndBrightnessGestureState != null && volumeState != null && brightnessState != null) {
             PlayerVerticalGestureIndicators(
                 activeGesture = volumeAndBrightnessGestureState.activeGesture,

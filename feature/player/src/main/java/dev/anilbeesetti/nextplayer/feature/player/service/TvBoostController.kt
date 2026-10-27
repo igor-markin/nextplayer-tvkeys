@@ -6,95 +6,106 @@ internal interface TvBoostEffect {
     fun release()
 }
 
-/** Owns session-local gain only. It has no dependency on system stream volume. */
+/** The saved user target outlives effects; lifecycle never changes system volume. */
 internal class TvBoostController(
     private val onGenerationChanged: () -> Unit = {},
     private val createEffect: (Int) -> TvBoostEffect,
 ) {
-    var gainMillibels: Int = 0
+    var targetMillibels = 0
         private set
-    var active: Boolean = false
+    var gainMillibels = 0
         private set
-    var generation: Long = 0
+    var active = false
         private set
+    var generation = 0L
+        private set
+    private var ready = false
+    private var sessionId = 0
+    private var enabled = false
     private var effect: TvBoostEffect? = null
 
-    val isSupported: Boolean
-        get() = runCatching { effect?.hasControl == true }.getOrDefault(false)
+    val isSupported: Boolean get() = runCatching { effect?.hasControl == true }.getOrDefault(false)
+
+    fun restoreTarget(value: Int) {
+        targetMillibels = value.coerceIn(0, MAX_MILLIBELS)
+        applyTarget()
+        onGenerationChanged()
+    }
 
     fun setActive(value: Boolean) {
         active = value
-        reset()
+        recreateEffect()
+    }
+
+    fun setReady(value: Boolean) {
+        if (ready == value) return
+        ready = value
+        if (!value) generation++
+        applyTarget()
+        onGenerationChanged()
     }
 
     fun updateAudioSession(sessionId: Int, enabled: Boolean) {
+        this.sessionId = sessionId
+        this.enabled = enabled
+        recreateEffect()
+    }
+
+    fun invalidatePlayback() {
+        ready = false
         clearEffect()
-        if (sessionId > 0 && enabled) {
-            try {
-                effect = createEffect(sessionId)
-                check(effect?.applyGain(0) == 0)
-            } catch (_: Exception) {
-                clearEffect()
-            }
-        }
-        advanceGeneration()
+        generation++
+        onGenerationChanged()
+    }
+
+    fun recreateEffect() {
+        clearEffect()
+        generation++
+        applyTarget()
+        onGenerationChanged()
     }
 
     fun adjust(expectedGeneration: Long, deltaMillibels: Int, reset: Boolean = false): Boolean {
-        // Validate at execution time, not when the controller or transport queued the press.
-        if (expectedGeneration != generation) return false
+        if (expectedGeneration != generation || !active || !ready) return false
         if (reset) {
             reset()
             return true
         }
-        return setGain(gainMillibels + deltaMillibels.coerceIn(-STEP_MILLIBELS, STEP_MILLIBELS))
+        return setGain(targetMillibels + deltaMillibels.coerceIn(-STEP_MILLIBELS, STEP_MILLIBELS))
     }
 
     fun setGain(requestedMillibels: Int): Boolean {
-        val requested = requestedMillibels.coerceIn(0, MAX_MILLIBELS)
-        if (requested == 0) {
-            clearGain()
-            return true
-        }
-        if (!active || !isSupported) {
-            reset()
-            return false
-        }
-        return try {
-            val applied = effect!!.applyGain(requested)
-            check(applied in 0..MAX_MILLIBELS)
-            gainMillibels = applied
-            true
-        } catch (_: Exception) {
-            clearEffect()
-            advanceGeneration()
-            false
-        }
+        if (!active || !ready) return false
+        restoreTarget(requestedMillibels)
+        return true
     }
 
+    /** Explicit legacy command only; media/route/lifecycle preserve the target. */
     fun reset() {
-        clearGain()
-        advanceGeneration()
-    }
-
-    private fun clearGain() {
-        gainMillibels = 0
-        try {
-            check(effect?.applyGain(0)?.let { it == 0 } != false)
-        } catch (_: Exception) {
-            clearEffect()
-        }
+        targetMillibels = 0
+        recreateEffect()
     }
 
     fun close() {
         active = false
+        ready = false
         clearEffect()
-        advanceGeneration()
-    }
-
-    private fun advanceGeneration() {
         generation++
         onGenerationChanged()
+    }
+
+    private fun applyTarget() {
+        if (!active || !ready || sessionId <= 0 || !enabled) {
+            clearEffect()
+            return
+        }
+        try {
+            val current = effect ?: createEffect(sessionId).also { effect = it }
+            check(current.hasControl)
+            gainMillibels = current.applyGain(targetMillibels).also { check(it in 0..MAX_MILLIBELS) }
+        } catch (_: Exception) {
+            clearEffect()
+        }
     }
 
     private fun clearEffect() {
