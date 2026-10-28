@@ -25,7 +25,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
@@ -128,7 +132,16 @@ internal fun MediaPlayerControls(
                                 }
                                 true
                             } else if (overlayView != null) {
-                                false
+                                // Compose turns an unhandled BACK into "move focus out of the menu",
+                                // which swallowed the first press. Close the menu ourselves instead.
+                                when (overlayBackKeyAction(keyEvent.key == Key.Back, keyEvent.type == KeyEventType.KeyUp)) {
+                                    OverlayBackKeyAction.CLOSE -> {
+                                        overlayView = null
+                                        true
+                                    }
+                                    OverlayBackKeyAction.CONSUME -> true
+                                    OverlayBackKeyAction.PASS -> false
+                                }
                             } else {
                                 keyInputState.onKeyEvent(keyEvent)
                             }
@@ -225,4 +238,13 @@ internal fun MediaPlayerControls(
             else -> onAction(PlayerAction.NavigateUp)
         }
     }
+}
+
+internal enum class OverlayBackKeyAction { CLOSE, CONSUME, PASS }
+
+/** BACK closes an open player menu on key-up; its key-down is consumed so focus does not move first. */
+internal fun overlayBackKeyAction(isBack: Boolean, isKeyUp: Boolean): OverlayBackKeyAction = when {
+    !isBack -> OverlayBackKeyAction.PASS
+    isKeyUp -> OverlayBackKeyAction.CLOSE
+    else -> OverlayBackKeyAction.CONSUME
 }
