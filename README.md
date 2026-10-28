@@ -2,6 +2,15 @@
 
 # Next Player
 
+> **This is a fork.** Next Player TV Keys is a modified version of [Next Player](https://github.com/anilbeesetti/nextplayer) by Anil Kumar Beesetti, based on v0.19.0 and licensed under GPL-3.0 like the original.
+>
+> Changes in this fork:
+> - Remote color keys in the player: red/green raise and lower an app-local audio boost (0 to +20 dB, saved between sessions), yellow opens audio tracks, blue opens subtitles.
+> - BACK closes an open player menu in one press on TV.
+> - Trimmed to a player for streaming apps: no media library, playlists, vault, network folders (SMB/FTP/SFTP/WebDAV) or storage permissions. Launching the app opens Settings.
+>
+> Package `dev.anilbeesetti.nextplayer.tvkeys`, so it installs next to the official app.
+
 [![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/anilbeesetti/nextplayer.svg?logo=github&label=GitHub&cacheSeconds=3600)](https://github.com/anilbeesetti/nextplayer/releases/latest)
 [![Google Play](https://img.shields.io/endpoint?color=green&logo=google-play&url=https%3A%2F%2Fplay.cuzi.workers.dev%2Fplay%3Fi%3Ddev.anilbeesetti.nextplayer%26l%3DGoogle%2520Play%26m%3Dv%24version)](https://play.google.com/store/apps/details?id=dev.anilbeesetti.nextplayer)
 [![IzzyOnDroid](https://img.shields.io/endpoint?url=https://apt.izzysoft.de/fdroid/api/v1/shield/dev.anilbeesetti.nextplayer)](https://apt.izzysoft.de/fdroid/index/apk/dev.anilbeesetti.nextplayer)
