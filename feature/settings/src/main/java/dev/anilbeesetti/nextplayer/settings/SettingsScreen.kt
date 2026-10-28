@@ -105,7 +105,6 @@ private fun SettingsScreenContent(
 
 enum class Setting {
     APPEARANCE,
-    MEDIA_LIBRARY,
     PLAYER,
     GESTURES,
     AUDIO,
@@ -125,12 +124,6 @@ private enum class SettingRow(
         descriptionResId = R.string.appearance_description,
         icon = NextIcons.Appearance,
         setting = Setting.APPEARANCE,
-    ),
-    MEDIA_LIBRARY(
-        titleResId = R.string.media_library,
-        descriptionResId = R.string.media_library_description,
-        icon = NextIcons.Movie,
-        setting = Setting.MEDIA_LIBRARY,
     ),
     PLAYER(
         titleResId = R.string.player_name,

@@ -14,31 +14,18 @@ import dev.anilbeesetti.nextplayer.core.media.sync.MediaSynchronizer
 import dev.anilbeesetti.nextplayer.core.model.ApplicationPreferences
 import dev.anilbeesetti.nextplayer.core.model.PlayerPreferences
 import dev.anilbeesetti.nextplayer.core.model.SearchHistory
-import dev.anilbeesetti.nextplayer.feature.more.screens.history.HistoryViewModel
-import dev.anilbeesetti.nextplayer.feature.more.screens.more.MoreViewModel
-import dev.anilbeesetti.nextplayer.feature.more.screens.trash.TrashViewModel
 import dev.anilbeesetti.nextplayer.feature.player.PlayerViewModel
-import dev.anilbeesetti.nextplayer.feature.playlist.screens.detail.PlaylistDetailViewModel
-import dev.anilbeesetti.nextplayer.feature.playlist.screens.list.PlaylistListViewModel
-import dev.anilbeesetti.nextplayer.feature.videopicker.screens.mediapicker.MediaPickerViewModel
-import dev.anilbeesetti.nextplayer.feature.videopicker.screens.search.SearchViewModel
-import dev.anilbeesetti.nextplayer.feature.videopicker.screens.vault.VaultViewModel
 import dev.anilbeesetti.nextplayer.settings.screens.about.AboutPreferencesViewModel
 import dev.anilbeesetti.nextplayer.settings.screens.about.LibrariesViewModel
 import dev.anilbeesetti.nextplayer.settings.screens.appearance.AppearancePreferencesViewModel
 import dev.anilbeesetti.nextplayer.settings.screens.audio.AudioPreferencesViewModel
 import dev.anilbeesetti.nextplayer.settings.screens.general.GeneralPreferencesViewModel
 import dev.anilbeesetti.nextplayer.settings.screens.gesture.GesturePreferencesViewModel
-import dev.anilbeesetti.nextplayer.settings.screens.medialibrary.FolderPreferencesViewModel
-import dev.anilbeesetti.nextplayer.settings.screens.medialibrary.MediaLibraryPreferencesViewModel
 import dev.anilbeesetti.nextplayer.settings.screens.player.PlayerPreferencesViewModel
 import dev.anilbeesetti.nextplayer.settings.screens.subtitle.SubtitlePreferencesViewModel
-import dev.anilbeesetti.nextplayer.settings.screens.thumbnail.ThumbnailPreferencesViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -72,39 +59,19 @@ class KoinGraphTest {
     fun viewModelsResolveWithRuntimeParametersAndRespectTheirStore() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val store = ViewModelStore()
-            val secondStore = ViewModelStore()
             try {
                 viewModel<MainViewModel>(store)
                 viewModel<PlayerViewModel>(store, PlayerViewModel.Output({}, {}, {}, {}, {}, {}, {}))
-                viewModel<HistoryViewModel>(store, HistoryViewModel.Output({}, {}))
-                viewModel<MoreViewModel>(store, MoreViewModel.Output({}, {}, {}, {}, {}))
-                viewModel<TrashViewModel>(store, TrashViewModel.Output({}, {}))
-                viewModel<PlaylistListViewModel>(store, PlaylistListViewModel.Output({}, {}))
-                viewModel<PlaylistDetailViewModel>(store, PlaylistDetailViewModel.Input(-1), PlaylistDetailViewModel.Output({}, { _, _ -> }))
-                viewModel<SearchViewModel>(store, SearchViewModel.Output({}, {}, {}))
-                viewModel<VaultViewModel>(store, VaultViewModel.Output({}, {}, {}))
                 viewModel<AboutPreferencesViewModel>(store, AboutPreferencesViewModel.Output({}, {}))
                 viewModel<LibrariesViewModel>(store, LibrariesViewModel.Output({}))
                 viewModel<AppearancePreferencesViewModel>(store, AppearancePreferencesViewModel.Output({}))
                 viewModel<AudioPreferencesViewModel>(store, AudioPreferencesViewModel.Output({}))
                 viewModel<GeneralPreferencesViewModel>(store, GeneralPreferencesViewModel.Output({}))
                 viewModel<GesturePreferencesViewModel>(store, GesturePreferencesViewModel.Output({}))
-                viewModel<FolderPreferencesViewModel>(store, FolderPreferencesViewModel.Output({}))
-                viewModel<MediaLibraryPreferencesViewModel>(store, MediaLibraryPreferencesViewModel.Output({}, {}, {}))
                 viewModel<PlayerPreferencesViewModel>(store, PlayerPreferencesViewModel.Output({}))
                 viewModel<SubtitlePreferencesViewModel>(store, SubtitlePreferencesViewModel.Output({}))
-                viewModel<ThumbnailPreferencesViewModel>(store, ThumbnailPreferencesViewModel.Output({}))
-
-                val output = MediaPickerViewModel.Output({}, {}, {}, {}, {}, {}, {})
-                val first = viewModel<MediaPickerViewModel>(store, MediaPickerViewModel.Input("/first"), output)
-                assertEquals("/first", first.folderPath)
-                assertSame(first, viewModel<MediaPickerViewModel>(store, MediaPickerViewModel.Input("/ignored"), output))
-                val second = viewModel<MediaPickerViewModel>(secondStore, MediaPickerViewModel.Input("/second"), output)
-                assertNotSame(first, second)
-                assertEquals("/second", second.folderPath)
             } finally {
                 store.clear()
-                secondStore.clear()
             }
         }
     }

@@ -3,10 +3,6 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
 
     <uses-feature
         android:name="android.software.leanback"
@@ -14,10 +10,6 @@
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32"
-        tools:ignore="ScopedStorage" />
 
     <application
         android:name=".NextPlayerApplication"
@@ -25,7 +17,6 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:requestLegacyExternalStorage="true"
         android:label="@string/app_name"
         android:banner="@drawable/tv_banner"
         android:supportsRtl="true"

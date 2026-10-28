@@ -11,17 +11,13 @@ import dev.anilbeesetti.nextplayer.core.data.DataModule
 import dev.anilbeesetti.nextplayer.core.data.repository.PreferencesRepository
 import dev.anilbeesetti.nextplayer.core.model.ThumbnailGenerationStrategy
 import dev.anilbeesetti.nextplayer.feature.player.PlayerModule
-import dev.anilbeesetti.nextplayer.feature.playlist.PlaylistModule
-import dev.anilbeesetti.nextplayer.feature.videopicker.VideoPickerModule
 import dev.anilbeesetti.nextplayer.settings.SettingsModule
 import okio.FileSystem
-import org.koin.core.annotation.ComponentScan
 import org.koin.core.annotation.KoinViewModel
 import org.koin.core.annotation.Module
 import org.koin.core.annotation.Single
 
-@Module(includes = [DispatchersModule::class, DataModule::class, PlaylistModule::class, PlayerModule::class, SettingsModule::class, VideoPickerModule::class])
-@ComponentScan("dev.anilbeesetti.nextplayer.feature.more")
+@Module(includes = [DispatchersModule::class, DataModule::class, PlayerModule::class, SettingsModule::class])
 class AppModule {
 
     @KoinViewModel

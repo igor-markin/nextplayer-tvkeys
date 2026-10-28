@@ -7,36 +7,31 @@ import dev.anilbeesetti.nextplayer.settings.Setting
 import dev.anilbeesetti.nextplayer.settings.navigation.aboutPreferencesEntry
 import dev.anilbeesetti.nextplayer.settings.navigation.appearancePreferencesEntry
 import dev.anilbeesetti.nextplayer.settings.navigation.audioPreferencesEntry
-import dev.anilbeesetti.nextplayer.settings.navigation.folderPreferencesEntry
 import dev.anilbeesetti.nextplayer.settings.navigation.generalPreferencesEntry
 import dev.anilbeesetti.nextplayer.settings.navigation.gesturePreferencesEntry
 import dev.anilbeesetti.nextplayer.settings.navigation.librariesEntry
-import dev.anilbeesetti.nextplayer.settings.navigation.mediaLibraryPreferencesEntry
 import dev.anilbeesetti.nextplayer.settings.navigation.navigateToAboutPreferences
 import dev.anilbeesetti.nextplayer.settings.navigation.navigateToAppearancePreferences
 import dev.anilbeesetti.nextplayer.settings.navigation.navigateToAudioPreferences
-import dev.anilbeesetti.nextplayer.settings.navigation.navigateToFolderPreferencesScreen
 import dev.anilbeesetti.nextplayer.settings.navigation.navigateToGeneralPreferences
 import dev.anilbeesetti.nextplayer.settings.navigation.navigateToGesturePreferences
 import dev.anilbeesetti.nextplayer.settings.navigation.navigateToLibraries
-import dev.anilbeesetti.nextplayer.settings.navigation.navigateToMediaLibraryPreferencesScreen
 import dev.anilbeesetti.nextplayer.settings.navigation.navigateToPlayerPreferences
 import dev.anilbeesetti.nextplayer.settings.navigation.navigateToSubtitlePreferences
-import dev.anilbeesetti.nextplayer.settings.navigation.navigateToThumbnailPreferencesScreen
 import dev.anilbeesetti.nextplayer.settings.navigation.playerPreferencesEntry
 import dev.anilbeesetti.nextplayer.settings.navigation.settingsEntry
 import dev.anilbeesetti.nextplayer.settings.navigation.subtitlePreferencesEntry
-import dev.anilbeesetti.nextplayer.settings.navigation.thumbnailPreferencesEntry
 
+/** Settings are the app's only screen; the root entry's "navigate up" leaves the app. */
 fun EntryProviderScope<NavKey>.settingsNavGraph(
     backStack: NavBackStack<NavKey>,
+    onExit: () -> Unit,
 ) {
     settingsEntry(
-        onNavigateUp = { backStack.removeLastIfNotRoot() },
+        onNavigateUp = { if (backStack.removeLastIfNotRoot() == null) onExit() },
         onItemClick = { setting ->
             when (setting) {
                 Setting.APPEARANCE -> backStack.navigateToAppearancePreferences()
-                Setting.MEDIA_LIBRARY -> backStack.navigateToMediaLibraryPreferencesScreen()
                 Setting.PLAYER -> backStack.navigateToPlayerPreferences()
                 Setting.GESTURES -> backStack.navigateToGesturePreferences()
                 Setting.AUDIO -> backStack.navigateToAudioPreferences()
@@ -47,17 +42,6 @@ fun EntryProviderScope<NavKey>.settingsNavGraph(
         },
     )
     appearancePreferencesEntry(
-        onNavigateUp = { backStack.removeLastIfNotRoot() },
-    )
-    mediaLibraryPreferencesEntry(
-        onNavigateUp = { backStack.removeLastIfNotRoot() },
-        onFolderSettingClick = backStack::navigateToFolderPreferencesScreen,
-        onThumbnailSettingClick = backStack::navigateToThumbnailPreferencesScreen,
-    )
-    thumbnailPreferencesEntry(
-        onNavigateUp = { backStack.removeLastIfNotRoot() },
-    )
-    folderPreferencesEntry(
         onNavigateUp = { backStack.removeLastIfNotRoot() },
     )
     playerPreferencesEntry(

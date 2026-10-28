@@ -101,8 +101,6 @@ dependencies {
     implementation(project(":core:media"))
     implementation(project(":core:model"))
     implementation(project(":core:ui"))
-    implementation(project(":feature:playlist"))
-    implementation(project(":feature:videopicker"))
     implementation(project(":feature:player"))
     implementation(project(":feature:settings"))
 
@@ -132,8 +130,6 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.koin.annotations)
     implementation(libs.koin.compose.viewmodel)
-
-    implementation(libs.accompanist.permissions)
 
     implementation(libs.github.anilbeesetti.nextlib.mediainfo)
 
