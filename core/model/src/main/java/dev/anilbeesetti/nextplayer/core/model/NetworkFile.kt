@@ -4,7 +4,7 @@ package dev.anilbeesetti.nextplayer.core.model
  * A file or directory entry on a network location.
  *
  * [path] is opaque to callers other than the client that produced it — it is fed back into
- * `NetworkClient.listFiles`/`openStream` to navigate into folders or open videos.
+ * a network client to navigate into folders or open videos.
  */
 data class NetworkFile(
     val name: String,

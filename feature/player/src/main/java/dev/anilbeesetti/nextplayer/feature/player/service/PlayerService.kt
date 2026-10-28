@@ -52,8 +52,6 @@ import dev.anilbeesetti.nextplayer.core.common.extensions.getPath
 import dev.anilbeesetti.nextplayer.core.common.extensions.subtitleCacheDir
 import dev.anilbeesetti.nextplayer.core.data.repository.MediaRepository
 import dev.anilbeesetti.nextplayer.core.data.repository.PreferencesRepository
-import dev.anilbeesetti.nextplayer.core.media.network.NetworkUri
-import dev.anilbeesetti.nextplayer.core.media.network.datasource.NextDataSourceFactory
 import dev.anilbeesetti.nextplayer.core.model.LoopMode
 import dev.anilbeesetti.nextplayer.core.model.PlayerPreferences
 import dev.anilbeesetti.nextplayer.core.model.Resume
@@ -97,7 +95,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -113,7 +110,6 @@ class PlayerService : MediaSessionService() {
 
     private val preferencesRepository: PreferencesRepository by inject()
 
-    private val dataSourceFactory: NextDataSourceFactory by inject()
 
     private val mediaRepository: MediaRepository by inject()
 
@@ -762,7 +758,7 @@ class PlayerService : MediaSessionService() {
             .setTrackSelector(trackSelector)
             .setMediaSourceFactory(
                 ExternalAudioMediaSourceFactory(
-                    DefaultMediaSourceFactory(applicationContext).setDataSourceFactory(dataSourceFactory),
+                    DefaultMediaSourceFactory(applicationContext),
                 ),
             )
             .setAudioAttributes(
@@ -851,9 +847,6 @@ class PlayerService : MediaSessionService() {
             mediaSession = null
         }
         subtitleCacheDir.deleteFiles()
-        // Drop the network connection before the scope dies, so a share isn't held open for the
-        // lifetime of the process after playback ends.
-        runBlocking { dataSourceFactory.release() }
         serviceScope.cancel()
     }
 
@@ -1118,7 +1111,7 @@ class PlayerService : MediaSessionService() {
 
     private fun MediaItem.isNetworkMediaItem(): Boolean {
         val uri = localConfiguration?.uri ?: return false
-        return uri.scheme?.lowercase() in REMOTE_SCHEMES || NetworkUri.isNetworkUri(uri)
+        return uri.scheme?.lowercase() in REMOTE_SCHEMES
     }
 
     private fun MediaItem.withArtwork(uri: Uri): MediaItem = buildUpon()

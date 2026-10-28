@@ -16,7 +16,6 @@ import dev.anilbeesetti.nextplayer.core.database.converter.UriListConverter
 import dev.anilbeesetti.nextplayer.core.database.dao.MediumStateDao
 import dev.anilbeesetti.nextplayer.core.database.entities.MediumStateEntity
 import dev.anilbeesetti.nextplayer.core.datastore.datasource.AppPreferencesDataSource
-import dev.anilbeesetti.nextplayer.core.media.network.NetworkUri
 import dev.anilbeesetti.nextplayer.core.media.services.MediaService
 import dev.anilbeesetti.nextplayer.core.model.Folder
 import dev.anilbeesetti.nextplayer.core.model.MediaInfo
@@ -121,10 +120,7 @@ class LocalMediaRepository(
         val preferences = appPreferencesDataSource.preferences.first()
         val mediaUri = uri.toUri()
         val recordHistory = !preferences.isHistoryPaused &&
-            !mediaUri.isVaultUri() &&
-            (preferences.includeNetworkWatchHistory ||
-                !NetworkUri.isNetworkUri(mediaUri) ||
-                NetworkUri.connectionIdOf(mediaUri) == null)
+            !mediaUri.isVaultUri()
         mediumStateDao.update(uri) { state ->
             state.copy(
                 lastPlayedTime = if (recordHistory) lastPlayedTime else state.lastPlayedTime,

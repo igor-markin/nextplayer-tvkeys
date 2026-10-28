@@ -15,7 +15,6 @@ class TopLevelNavigationTest {
             listOf(
                 TopLevelDestination.MEDIA,
                 TopLevelDestination.PLAYLISTS,
-                TopLevelDestination.NETWORK,
                 TopLevelDestination.MORE,
             ),
             TopLevelDestination.entries,

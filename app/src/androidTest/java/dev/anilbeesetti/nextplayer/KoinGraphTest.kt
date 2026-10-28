@@ -8,7 +8,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.anilbeesetti.nextplayer.core.common.di.DiQualifiers
 import dev.anilbeesetti.nextplayer.core.data.repository.PreferencesRepository
-import dev.anilbeesetti.nextplayer.core.media.network.datasource.NextDataSourceFactory
 import dev.anilbeesetti.nextplayer.core.media.services.MediaOperationsService
 import dev.anilbeesetti.nextplayer.core.media.services.MediaService
 import dev.anilbeesetti.nextplayer.core.media.sync.MediaSynchronizer
@@ -18,9 +17,6 @@ import dev.anilbeesetti.nextplayer.core.model.SearchHistory
 import dev.anilbeesetti.nextplayer.feature.more.screens.history.HistoryViewModel
 import dev.anilbeesetti.nextplayer.feature.more.screens.more.MoreViewModel
 import dev.anilbeesetti.nextplayer.feature.more.screens.trash.TrashViewModel
-import dev.anilbeesetti.nextplayer.feature.network.screens.addconnection.AddConnectionViewModel
-import dev.anilbeesetti.nextplayer.feature.network.screens.browse.NetworkBrowseViewModel
-import dev.anilbeesetti.nextplayer.feature.network.screens.list.NetworkViewModel
 import dev.anilbeesetti.nextplayer.feature.player.PlayerViewModel
 import dev.anilbeesetti.nextplayer.feature.playlist.screens.detail.PlaylistDetailViewModel
 import dev.anilbeesetti.nextplayer.feature.playlist.screens.list.PlaylistListViewModel
@@ -63,7 +59,6 @@ class KoinGraphTest {
             assertSame(koin.get<MediaOperationsService>(), koin.get<MediaOperationsService>())
             assertSame(koin.get<MediaService>(), koin.get<MediaService>())
             assertSame(koin.get<MediaSynchronizer>(), koin.get<MediaSynchronizer>())
-            assertSame(koin.get<NextDataSourceFactory>(), koin.get<NextDataSourceFactory>())
             withTimeout(10_000) {
                 // Read the typed values to catch collisions between erased DataStore keys.
                 koin.get<DataStore<ApplicationPreferences>>(named(DiQualifiers.APP_PREFERENCES)).data.first().mediaViewMode
@@ -84,9 +79,6 @@ class KoinGraphTest {
                 viewModel<HistoryViewModel>(store, HistoryViewModel.Output({}, {}))
                 viewModel<MoreViewModel>(store, MoreViewModel.Output({}, {}, {}, {}, {}))
                 viewModel<TrashViewModel>(store, TrashViewModel.Output({}, {}))
-                viewModel<NetworkViewModel>(store, NetworkViewModel.Output({}, {}, {}, {}, {}))
-                viewModel<AddConnectionViewModel>(store, AddConnectionViewModel.Input(null), AddConnectionViewModel.Output({}))
-                viewModel<NetworkBrowseViewModel>(store, NetworkBrowseViewModel.Input(-1, "/"), NetworkBrowseViewModel.Output({}, { _, _ -> }, { _, _ -> }))
                 viewModel<PlaylistListViewModel>(store, PlaylistListViewModel.Output({}, {}))
                 viewModel<PlaylistDetailViewModel>(store, PlaylistDetailViewModel.Input(-1), PlaylistDetailViewModel.Output({}, { _, _ -> }))
                 viewModel<SearchViewModel>(store, SearchViewModel.Output({}, {}, {}))
