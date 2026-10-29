@@ -89,3 +89,15 @@ internal fun apiStartPosition(position: Int?, fromStart: Boolean): Int? = when {
     position != null && position > 0 -> position
     else -> null
 }
+
+/**
+ * Streaming apps like KinoWatch hand out a new signed URL on every open, so the URL can't key the
+ * saved playback state. Their title (e.g. "Mr. Robot S1E2 ...") is stable, so key network streams
+ * by it when the caller provides one.
+ */
+internal fun externalMediaId(uri: String, title: String?): String {
+    val isNetwork = uri.substringBefore(':').lowercase() in setOf("http", "https")
+    return if (isNetwork && !title.isNullOrBlank()) "$EXTERNAL_TITLE_MEDIA_ID_PREFIX$title" else uri
+}
+
+private const val EXTERNAL_TITLE_MEDIA_ID_PREFIX = "external-title:"
