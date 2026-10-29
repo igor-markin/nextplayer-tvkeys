@@ -43,6 +43,7 @@ import dev.anilbeesetti.nextplayer.feature.player.service.tryDecoderFallback
 import dev.anilbeesetti.nextplayer.feature.player.service.tvBoostStatus
 import dev.anilbeesetti.nextplayer.feature.player.state.rememberMediaController
 import dev.anilbeesetti.nextplayer.feature.player.utils.PlayerApi
+import dev.anilbeesetti.nextplayer.feature.player.utils.externalMediaId
 import dev.anilbeesetti.nextplayer.feature.player.utils.PlaylistPlaybackContract
 import dev.anilbeesetti.nextplayer.feature.player.utils.toMediaQueue
 import java.util.concurrent.CopyOnWriteArrayList
@@ -316,7 +317,9 @@ class PlayerActivity : ComponentActivity() {
         val mediaItems = playlist.mapIndexed { index, uri ->
             MediaItem.Builder().apply {
                 setUri(uri)
-                setMediaId(uri)
+                setMediaId(
+                    if (index == mediaItemIndexToPlay) externalMediaId(uri = uri, title = playerApi.title) else uri,
+                )
                 if (index == mediaItemIndexToPlay) {
                     setMediaMetadata(
                         MediaMetadata.Builder().apply {

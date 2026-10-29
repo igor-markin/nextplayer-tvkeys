@@ -14,7 +14,10 @@ class PlayerApi(val activity: PlayerActivity) {
     val hasPosition: Boolean get() = extras?.containsKey(API_POSITION) == true
     val hasTitle: Boolean get() = extras?.containsKey(API_TITLE) == true
     val shouldReturnResult: Boolean get() = extras?.containsKey(API_RETURN_RESULT) == true
-    val position: Int? get() = if (hasPosition) extras?.getInt(API_POSITION) else null
+    val position: Int? get() = apiStartPosition(
+        position = if (hasPosition) extras?.getInt(API_POSITION) else null,
+        fromStart = extras?.getBoolean(API_FROM_START) == true,
+    )
     val title: String? get() = if (hasTitle) extras?.getString(API_TITLE) else null
 
     fun getSubs(): List<Subtitle> {
@@ -60,6 +63,7 @@ class PlayerApi(val activity: PlayerActivity) {
     companion object {
         const val API_TITLE = "title"
         const val API_POSITION = "position"
+        const val API_FROM_START = "from_start"
         const val API_DURATION = "duration"
         const val API_RETURN_RESULT = "return_result"
         const val API_END_BY = "end_by"
@@ -74,3 +78,26 @@ class PlayerApi(val activity: PlayerActivity) {
         private const val API_END_BY_COMPLETION = "playback_completion"
     }
 }
+
+/**
+ * Apps like KinoWatch always send their own last known position, which stays 0 when they never got
+ * a result back (e.g. the player was left with HOME). Treat 0 as "unknown" so the player's own saved
+ * position is used, unless the caller explicitly asks to start over.
+ */
+internal fun apiStartPosition(position: Int?, fromStart: Boolean): Int? = when {
+    fromStart -> 0
+    position != null && position > 0 -> position
+    else -> null
+}
+
+/**
+ * Streaming apps like KinoWatch hand out a new signed URL on every open, so the URL can't key the
+ * saved playback state. Their title (e.g. "Mr. Robot S1E2 ...") is stable, so key network streams
+ * by it when the caller provides one.
+ */
+internal fun externalMediaId(uri: String, title: String?): String {
+    val isNetwork = uri.substringBefore(':').lowercase() in setOf("http", "https")
+    return if (isNetwork && !title.isNullOrBlank()) "$EXTERNAL_TITLE_MEDIA_ID_PREFIX$title" else uri
+}
+
+private const val EXTERNAL_TITLE_MEDIA_ID_PREFIX = "external-title:"
