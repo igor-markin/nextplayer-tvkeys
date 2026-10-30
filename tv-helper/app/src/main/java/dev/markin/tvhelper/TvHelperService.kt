@@ -34,7 +34,6 @@ class TvHelperService : AccessibilityService() {
     private val longPressActions = mapOf<Int, () -> Unit>(
         KeyEvent.KEYCODE_SETTINGS to { openPictureSettings() },
         KeyEvent.KEYCODE_TV_TELETEXT to { showPanel() },
-        CHANNEL_LIST_KEYCODE to { applyProfile() },
     )
     private val trackers = longPressActions.mapValues { LongPressTracker(LONG_PRESS_MS) }
     private val timeouts = longPressActions.mapValues { (keyCode, action) ->
@@ -213,9 +212,6 @@ class TvHelperService : AccessibilityService() {
     private companion object {
         const val TAG = "TvHelper"
         const val LONG_PRESS_MS = 600L
-
-        // CH LIST on the Xiaomi remote; -1 matches no key until the real code is captured.
-        const val CHANNEL_LIST_KEYCODE = -1
         const val PANEL_TIMEOUT_MS = 5_000L
         const val PREFS_NAME = "tv_helper"
         const val PREF_GAIN_DB = "gain_db"
