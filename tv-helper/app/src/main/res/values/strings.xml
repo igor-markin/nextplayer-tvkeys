@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TV Helper</string>
+    <string name="service_description">Opens picture settings on a long press of SETTINGS and a volume boost panel on a long press of TTX, and changes the volume in steps of 5.</string>
+    <string name="panel_title">Усиление звука</string>
+    <string name="panel_gain">+%1$d дБ</string>
+    <string name="panel_limiter_on">Лимитер: вкл</string>
+    <string name="panel_limiter_off">Лимитер: выкл</string>
+    <string name="panel_hint">◀ ▶ уровень · ▲ ▼ лимитер · OK мой профиль · Back закрыть</string>
+    <string name="profile_problems">Не удалось включить Custom: %1$s</string>
+</resources>
