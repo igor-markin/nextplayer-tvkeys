@@ -6,5 +6,8 @@
     <string name="panel_gain">+%1$d дБ</string>
     <string name="panel_limiter_on">Лимитер: вкл</string>
     <string name="panel_limiter_off">Лимитер: выкл</string>
-    <string name="panel_hint">◀ ▶ уровень · OK лимитер · Back закрыть</string>
+    <string name="panel_hint">◀ ▶ уровень · OK лимитер · ▼ мой профиль · Back закрыть</string>
+    <string name="profile_applied">Профиль применён: %1$s</string>
+    <string name="profile_already">Профиль уже стоит</string>
+    <string name="profile_problems">Профиль: проверь вручную — %1$s</string>
 </resources>

@@ -13,6 +13,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
+import android.widget.Toast
 
 /**
  * Remote shortcuts and the global volume boost.
@@ -28,10 +29,12 @@ class TvHelperService : AccessibilityService() {
     private val handler = Handler(Looper.getMainLooper())
     private val gain = GlobalGain()
     private lateinit var panel: GainPanel
+    private lateinit var profile: PictureProfile
 
-    private val longPressActions = mapOf(
-        KeyEvent.KEYCODE_SETTINGS to ::openPictureSettings,
-        KeyEvent.KEYCODE_TV_TELETEXT to ::showPanel,
+    private val longPressActions = mapOf<Int, () -> Unit>(
+        KeyEvent.KEYCODE_SETTINGS to { openPictureSettings() },
+        KeyEvent.KEYCODE_TV_TELETEXT to { showPanel() },
+        CHANNEL_LIST_KEYCODE to { applyProfile() },
     )
     private val trackers = longPressActions.mapValues { LongPressTracker(LONG_PRESS_MS) }
     private val timeouts = longPressActions.mapValues { (keyCode, action) ->
@@ -53,15 +56,20 @@ class TvHelperService : AccessibilityService() {
                     if (intent.getStringExtra(EXTRA_MODE) == "le") GlobalGain.Mode.LOUDNESS else GlobalGain.Mode.DYNAMICS,
                 )
                 ACTION_LOG_KEYS -> logKeys = intent.getBooleanExtra(EXTRA_ENABLED, true)
+                ACTION_DUMP_TREE -> NodeDump.log(rootInActiveWindow, windows)
+                ACTION_APPLY_PROFILE -> applyProfile()
             }
         }
     }
 
     override fun onServiceConnected() {
         panel = GainPanel(this)
+        profile = PictureProfile(this, ::reportProfile)
         val filter = IntentFilter().apply {
             addAction(ACTION_SET_GAIN)
             addAction(ACTION_LOG_KEYS)
+            addAction(ACTION_DUMP_TREE)
+            addAction(ACTION_APPLY_PROFILE)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(commandReceiver, filter, Manifest.permission.DUMP, null, RECEIVER_EXPORTED)
@@ -112,8 +120,11 @@ class TvHelperService : AccessibilityService() {
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER,
             KeyEvent.KEYCODE_DPAD_UP,
-            KeyEvent.KEYCODE_DPAD_DOWN,
             -> if (down && event.repeatCount == 0) setGain(gainDb, !limiter)
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (!down) applyProfile()
+                return true
+            }
             KeyEvent.KEYCODE_BACK -> {
                 if (!down) closePanel()
                 return true
@@ -131,6 +142,20 @@ class TvHelperService : AccessibilityService() {
             scheduleHide()
         }
         return true
+    }
+
+    private fun applyProfile() {
+        if (::panel.isInitialized) closePanel()
+        profile.start()
+    }
+
+    private fun reportProfile(result: PictureProfile.Result) {
+        val message = when {
+            result.problems.isNotEmpty() -> getString(R.string.profile_problems, result.problems.joinToString())
+            result.changed.isEmpty() -> getString(R.string.profile_already)
+            else -> getString(R.string.profile_applied, result.changed.joinToString())
+        }
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
     private fun showPanel() {
@@ -188,6 +213,9 @@ class TvHelperService : AccessibilityService() {
     private companion object {
         const val TAG = "TvHelper"
         const val LONG_PRESS_MS = 600L
+
+        // CH LIST on the Xiaomi remote; -1 matches no key until the real code is captured.
+        const val CHANNEL_LIST_KEYCODE = -1
         const val PANEL_TIMEOUT_MS = 5_000L
         const val PREFS_NAME = "tv_helper"
         const val PREF_GAIN_DB = "gain_db"
@@ -197,6 +225,8 @@ class TvHelperService : AccessibilityService() {
         const val PICTURE_ACTIVITY = "com.android.tv.settings.partnercustomizer.picture.PictureActivity"
         const val ACTION_SET_GAIN = "dev.markin.tvhelper.SET_GAIN"
         const val ACTION_LOG_KEYS = "dev.markin.tvhelper.LOG_KEYS"
+        const val ACTION_DUMP_TREE = "dev.markin.tvhelper.DUMP_TREE"
+        const val ACTION_APPLY_PROFILE = "dev.markin.tvhelper.APPLY_PROFILE"
         const val EXTRA_DB = "db"
         const val EXTRA_MODE = "mode"
         const val EXTRA_LIMITER = "limiter"
