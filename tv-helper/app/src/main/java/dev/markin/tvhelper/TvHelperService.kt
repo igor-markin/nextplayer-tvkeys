@@ -15,35 +15,52 @@ import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 
 /**
- * Opens the TV picture settings on a long press of the watched remote key and holds
- * the global volume boost. Both are controlled over adb broadcasts, which require the
- * DUMP permission that only the shell and the system hold.
+ * Remote shortcuts and the global volume boost.
+ *
+ * A long press of SETTINGS opens the TV picture settings. A long press of TTX shows
+ * the boost panel; while it is shown, the D-pad, OK and Back keys control the panel
+ * and never reach the app underneath. The boost level and limiter state survive
+ * restarts. Adb broadcasts, which require the DUMP permission that only the shell
+ * and the system hold, can set the boost and turn on key logging.
  */
 class TvHelperService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
-    private val tracker = LongPressTracker(LONG_PRESS_MS)
     private val gain = GlobalGain()
-    private val openPictureOnTimeout = Runnable { if (tracker.onTimeout()) openPictureSettings() }
+    private lateinit var panel: GainPanel
 
-    private var watchedKeyCode = KeyEvent.KEYCODE_MENU
+    private val longPressActions = mapOf(
+        KeyEvent.KEYCODE_SETTINGS to ::openPictureSettings,
+        KeyEvent.KEYCODE_TV_TELETEXT to ::showPanel,
+    )
+    private val trackers = longPressActions.mapValues { LongPressTracker(LONG_PRESS_MS) }
+    private val timeouts = longPressActions.mapValues { (keyCode, action) ->
+        Runnable { if (trackers.getValue(keyCode).onTimeout()) action() }
+    }
+    private val hidePanel = Runnable { closePanel() }
+
+    private var gainDb = 0
+    private var limiter = true
     private var logKeys = false
+    private var closeOnTeletextUp = false
 
     private val commandReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                ACTION_SET_GAIN -> setGain(intent)
-                ACTION_SET_KEY -> setWatchedKey(intent.getIntExtra(EXTRA_KEYCODE, watchedKeyCode))
+                ACTION_SET_GAIN -> setGain(
+                    intent.getIntExtra(EXTRA_DB, 0),
+                    intent.getBooleanExtra(EXTRA_LIMITER, true),
+                    if (intent.getStringExtra(EXTRA_MODE) == "le") GlobalGain.Mode.LOUDNESS else GlobalGain.Mode.DYNAMICS,
+                )
                 ACTION_LOG_KEYS -> logKeys = intent.getBooleanExtra(EXTRA_ENABLED, true)
             }
         }
     }
 
     override fun onServiceConnected() {
-        watchedKeyCode = prefs().getInt(PREF_KEYCODE, KeyEvent.KEYCODE_MENU)
+        panel = GainPanel(this)
         val filter = IntentFilter().apply {
             addAction(ACTION_SET_GAIN)
-            addAction(ACTION_SET_KEY)
             addAction(ACTION_LOG_KEYS)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -51,37 +68,85 @@ class TvHelperService : AccessibilityService() {
         } else {
             registerReceiver(commandReceiver, filter, Manifest.permission.DUMP, null)
         }
-        Log.i(TAG, "Connected, watching keycode $watchedKeyCode")
+        val prefs = prefs()
+        setGain(prefs.getInt(PREF_GAIN_DB, 0), prefs.getBoolean(PREF_LIMITER, true))
+        Log.i(TAG, "Connected, restored +$gainDb dB, limiter=$limiter")
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (logKeys) Log.i(TAG, "Key ${event.keyCode} action=${event.action} repeat=${event.repeatCount}")
-        if (event.keyCode != watchedKeyCode) return false
+        if (panel.isShown && handlePanelKey(event)) return true
 
+        val tracker = trackers[event.keyCode] ?: return false
+        val timeout = timeouts.getValue(event.keyCode)
         return when (event.action) {
-            KeyEvent.ACTION_DOWN -> handleDown(event)
+            KeyEvent.ACTION_DOWN -> {
+                if (event.repeatCount == 0) {
+                    handler.removeCallbacks(timeout)
+                    handler.postDelayed(timeout, LONG_PRESS_MS)
+                }
+                when (tracker.onDown(event.repeatCount, event.downTime, event.eventTime)) {
+                    LongPressTracker.Action.PASS -> false
+                    LongPressTracker.Action.CONSUME -> true
+                    LongPressTracker.Action.FIRE -> {
+                        handler.removeCallbacks(timeout)
+                        longPressActions.getValue(event.keyCode)()
+                        true
+                    }
+                }
+            }
             KeyEvent.ACTION_UP -> {
-                handler.removeCallbacks(openPictureOnTimeout)
+                handler.removeCallbacks(timeout)
                 tracker.onUp()
             }
             else -> false
         }
     }
 
-    private fun handleDown(event: KeyEvent): Boolean {
-        if (event.repeatCount == 0) {
-            handler.removeCallbacks(openPictureOnTimeout)
-            handler.postDelayed(openPictureOnTimeout, LONG_PRESS_MS)
-        }
-        return when (tracker.onDown(event.repeatCount, event.downTime, event.eventTime)) {
-            LongPressTracker.Action.PASS -> false
-            LongPressTracker.Action.CONSUME -> true
-            LongPressTracker.Action.FIRE -> {
-                handler.removeCallbacks(openPictureOnTimeout)
-                openPictureSettings()
-                true
+    /** Returns true when the key belongs to the panel and must not reach the app. */
+    private fun handlePanelKey(event: KeyEvent): Boolean {
+        val down = event.action == KeyEvent.ACTION_DOWN
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT -> if (down) setGain(gainDb - GainLevels.STEP_DB, limiter)
+            KeyEvent.KEYCODE_DPAD_RIGHT -> if (down) setGain(gainDb + GainLevels.STEP_DB, limiter)
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            -> if (down && event.repeatCount == 0) setGain(gainDb, !limiter)
+            KeyEvent.KEYCODE_BACK -> {
+                if (!down) closePanel()
+                return true
             }
+            KeyEvent.KEYCODE_TV_TELETEXT -> {
+                // The release of the press that opened the panel must not close it.
+                if (down && event.repeatCount == 0) closeOnTeletextUp = true
+                if (!down && closeOnTeletextUp) closePanel()
+                return closeOnTeletextUp
+            }
+            else -> return false
         }
+        if (panel.isShown) {
+            panel.render(gainDb, limiter)
+            scheduleHide()
+        }
+        return true
+    }
+
+    private fun showPanel() {
+        panel.show(gainDb, limiter)
+        scheduleHide()
+    }
+
+    private fun closePanel() {
+        closeOnTeletextUp = false
+        handler.removeCallbacks(hidePanel)
+        panel.hide()
+    }
+
+    private fun scheduleHide() {
+        handler.removeCallbacks(hidePanel)
+        handler.postDelayed(hidePanel, PANEL_TIMEOUT_MS)
     }
 
     private fun openPictureSettings() {
@@ -95,20 +160,15 @@ class TvHelperService : AccessibilityService() {
             .onFailure { Log.e(TAG, "Cannot open picture settings", it) }
     }
 
-    private fun setGain(intent: Intent) {
-        val mode = when (intent.getStringExtra(EXTRA_MODE)) {
-            "le" -> GlobalGain.Mode.LOUDNESS
-            else -> GlobalGain.Mode.DYNAMICS
-        }
-        val limiter = intent.getBooleanExtra(EXTRA_LIMITER, true)
-        runCatching { gain.apply(intent.getIntExtra(EXTRA_DB, 0), mode, limiter) }
+    private fun setGain(db: Int, limiter: Boolean, mode: GlobalGain.Mode = GlobalGain.Mode.DYNAMICS) {
+        runCatching { gain.apply(db, mode, limiter) }
             .onFailure { Log.e(TAG, "Cannot apply gain", it) }
-    }
-
-    private fun setWatchedKey(keyCode: Int) {
-        watchedKeyCode = keyCode
-        prefs().edit().putInt(PREF_KEYCODE, keyCode).apply()
-        Log.i(TAG, "Watching keycode $keyCode")
+        gainDb = gain.gainDb
+        this.limiter = limiter
+        prefs().edit()
+            .putInt(PREF_GAIN_DB, gainDb)
+            .putBoolean(PREF_LIMITER, limiter)
+            .apply()
     }
 
     private fun prefs() = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -118,8 +178,9 @@ class TvHelperService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
-        handler.removeCallbacks(openPictureOnTimeout)
+        handler.removeCallbacksAndMessages(null)
         runCatching { unregisterReceiver(commandReceiver) }
+        if (::panel.isInitialized) panel.hide()
         gain.release()
         super.onDestroy()
     }
@@ -127,18 +188,18 @@ class TvHelperService : AccessibilityService() {
     private companion object {
         const val TAG = "TvHelper"
         const val LONG_PRESS_MS = 600L
+        const val PANEL_TIMEOUT_MS = 5_000L
         const val PREFS_NAME = "tv_helper"
-        const val PREF_KEYCODE = "keycode"
+        const val PREF_GAIN_DB = "gain_db"
+        const val PREF_LIMITER = "limiter"
         const val PICTURE_SETTINGS_ACTION = "com.mitv.settings.PICTURE_SETTINGS"
         const val TV_SETTINGS_PACKAGE = "com.android.tv.settings"
         const val PICTURE_ACTIVITY = "com.android.tv.settings.partnercustomizer.picture.PictureActivity"
         const val ACTION_SET_GAIN = "dev.markin.tvhelper.SET_GAIN"
-        const val ACTION_SET_KEY = "dev.markin.tvhelper.SET_KEY"
         const val ACTION_LOG_KEYS = "dev.markin.tvhelper.LOG_KEYS"
         const val EXTRA_DB = "db"
         const val EXTRA_MODE = "mode"
         const val EXTRA_LIMITER = "limiter"
-        const val EXTRA_KEYCODE = "keycode"
         const val EXTRA_ENABLED = "enabled"
     }
 }

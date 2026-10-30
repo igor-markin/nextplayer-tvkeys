@@ -10,8 +10,8 @@ android {
         applicationId = "dev.markin.tvhelper"
         minSdk = 28
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         ndk {
             abiFilters += "armeabi-v7a"
         }

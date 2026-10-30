@@ -11,13 +11,27 @@ class GlobalGain {
     enum class Mode { DYNAMICS, LOUDNESS }
 
     private var effect: AudioEffect? = null
+    private var mode = Mode.DYNAMICS
+    private var limiter = true
 
     var gainDb = 0
         private set
 
     fun apply(db: Int, mode: Mode, limiter: Boolean) {
+        val normalized = GainLevels.normalize(db)
+        val current = effect
+        if (normalized > 0 && current is DynamicsProcessing && mode == this.mode && limiter == this.limiter) {
+            // Changing only the level keeps the effect alive, so playback has no gap.
+            current.setInputGainAllChannelsTo(normalized.toFloat())
+            gainDb = normalized
+            Log.i(TAG, "Changed gain to +$gainDb dB")
+            return
+        }
+
         release()
-        gainDb = GainLevels.normalize(db)
+        this.mode = mode
+        this.limiter = limiter
+        gainDb = normalized
         if (gainDb == 0) return
         effect = when (mode) {
             Mode.DYNAMICS -> createDynamics(gainDb, limiter)
