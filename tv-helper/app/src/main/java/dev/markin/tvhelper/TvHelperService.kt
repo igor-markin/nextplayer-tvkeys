@@ -149,11 +149,8 @@ class TvHelperService : AccessibilityService() {
     }
 
     private fun reportProfile(result: PictureProfile.Result) {
-        val message = when {
-            result.problems.isNotEmpty() -> getString(R.string.profile_problems, result.problems.joinToString())
-            result.changed.isEmpty() -> getString(R.string.profile_already)
-            else -> getString(R.string.profile_applied, result.changed.joinToString())
-        }
+        if (result.problems.isEmpty()) return
+        val message = getString(R.string.profile_problems, result.problems.joinToString())
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 

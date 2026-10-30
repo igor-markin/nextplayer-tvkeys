@@ -9,13 +9,10 @@ import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 
 /**
- * Applies the picture profile by driving the TV picture settings screen, because
- * the picture parameters can only be changed by the system settings app.
- *
- * Only the rows on the main Picture screen are touched, so the menu stays on screen
- * as briefly as possible. The Custom mode keeps its own sliders and advanced video
- * values. Sliders cannot be moved through accessibility on Android 9, so Backlight
- * is only checked and reported.
+ * Switches the picture mode to Custom by driving the TV picture settings screen,
+ * because the picture parameters can only be changed by the system settings app.
+ * Custom keeps its own values, so nothing else is touched and the menu closes
+ * right away.
  */
 class PictureProfile(
     private val service: AccessibilityService,
@@ -41,17 +38,17 @@ class PictureProfile(
         changed.clear()
         problems.clear()
         steps.clear()
-        steps += Step("Picture") { root -> title(root) == PICTURE }
-        steps += ensureValue(PICTURE, "Picture Mode", "Custom")
-        steps += ensureValue(PICTURE, "Color Temperature", "Warm")
-        steps += ensureValue(PICTURE, "Motion Smooth", "Off")
-        steps += Step("Backlight") { root ->
-            val value = findById(root, PROGRESS_VALUE_ID)?.text?.toString()
-            if (value != "100") problems += "Backlight $value"
-            true
+        steps += Step(PICTURE) { root ->
+            val title = title(root)
+            // A list left open on top of the Picture screen is closed first.
+            if (title != null && title != PICTURE && settled()) {
+                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            }
+            title == PICTURE
         }
+        steps += ensureValue(PICTURE, "Picture Mode", "Custom")
         steps += Step("Close") { root ->
-            val inSettings = title(root) == PICTURE
+            val inSettings = root.packageName == SETTINGS_PACKAGE
             if (inSettings && settled()) service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
             !inSettings
         }
@@ -74,7 +71,8 @@ class PictureProfile(
         steps.addFirst(Step("$row → $value") { list ->
             title(list) == row && settled() && click(findByExactText(list, value))
         })
-        steps.add(1, Step(screen) { back -> title(back) == screen && rowSummary(back, row) == value })
+        // Choosing Custom opens Equalizer Detail, so only leaving the list is awaited.
+        steps.add(1, Step(screen) { next -> title(next) != row })
         changed += "$row: $summary → $value"
         true
     }
@@ -151,9 +149,9 @@ class PictureProfile(
         const val STEP_TIMEOUT_MS = 3_000L
         const val SETTLE_MS = 400L
         const val PICTURE = "Picture"
+        const val SETTINGS_PACKAGE = "com.android.tv.settings"
         const val PICTURE_SETTINGS_ACTION = "com.mitv.settings.PICTURE_SETTINGS"
         const val TITLE_ID = "com.android.tv.settings:id/decor_title"
-        const val PROGRESS_VALUE_ID = "com.android.tv.settings:id/preference_progress_value"
         const val SUMMARY_ID = "android:id/summary"
     }
 }
