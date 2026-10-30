@@ -9,11 +9,13 @@ import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 
 /**
- * Applies the picture profile by driving the TV picture settings screens, because
+ * Applies the picture profile by driving the TV picture settings screen, because
  * the picture parameters can only be changed by the system settings app.
  *
- * Only list values are changed. Sliders cannot be moved through accessibility on
- * Android 9, so Backlight is only checked and reported.
+ * Only the rows on the main Picture screen are touched, so the menu stays on screen
+ * as briefly as possible. The Custom mode keeps its own sliders and advanced video
+ * values. Sliders cannot be moved through accessibility on Android 9, so Backlight
+ * is only checked and reported.
  */
 class PictureProfile(
     private val service: AccessibilityService,
@@ -48,12 +50,8 @@ class PictureProfile(
             if (value != "100") problems += "Backlight $value"
             true
         }
-        steps += openScreen(PICTURE, ADVANCED_VIDEO)
-        steps += ensureValue(ADVANCED_VIDEO, "Noise reduction", "Off")
-        steps += ensureValue(ADVANCED_VIDEO, "Adaptive luma control", "Off")
-        steps += ensureValue(ADVANCED_VIDEO, "Local contrast control", "Off")
         steps += Step("Close") { root ->
-            val inSettings = title(root) == ADVANCED_VIDEO || title(root) == PICTURE
+            val inSettings = title(root) == PICTURE
             if (inSettings && settled()) service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
             !inSettings
         }
@@ -81,16 +79,6 @@ class PictureProfile(
         true
     }
 
-    private fun openScreen(from: String, screen: String) = Step(screen) { root ->
-        when (title(root)) {
-            screen -> true
-            from -> {
-                if (settled()) click(rowNode(root, screen))
-                false
-            }
-            else -> false
-        }
-    }
 
     private fun next() {
         val step = steps.removeFirstOrNull()
@@ -163,7 +151,6 @@ class PictureProfile(
         const val STEP_TIMEOUT_MS = 3_000L
         const val SETTLE_MS = 400L
         const val PICTURE = "Picture"
-        const val ADVANCED_VIDEO = "Advanced Video"
         const val PICTURE_SETTINGS_ACTION = "com.mitv.settings.PICTURE_SETTINGS"
         const val TITLE_ID = "com.android.tv.settings:id/decor_title"
         const val PROGRESS_VALUE_ID = "com.android.tv.settings:id/preference_progress_value"
