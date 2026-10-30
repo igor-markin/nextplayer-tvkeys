@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -20,7 +21,8 @@ import android.widget.Toast
  *
  * A long press of SETTINGS opens the TV picture settings. A long press of TTX shows
  * the boost panel; while it is shown, the D-pad, OK and Back keys control the panel
- * and never reach the app underneath. The boost level and limiter state survive
+ * and never reach the app underneath. A one-step change of the music volume is
+ * widened to [VolumeStep.STEP] steps. The boost level and limiter state survive
  * restarts. Adb broadcasts, which require the DUMP permission that only the shell
  * and the system hold, can set the boost and turn on key logging.
  */
@@ -45,6 +47,7 @@ class TvHelperService : AccessibilityService() {
     private var limiter = true
     private var logKeys = false
     private var closeOnTeletextUp = false
+    private var ownVolume: Int? = null
 
     private val commandReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -57,6 +60,17 @@ class TvHelperService : AccessibilityService() {
                 ACTION_LOG_KEYS -> logKeys = intent.getBooleanExtra(EXTRA_ENABLED, true)
                 ACTION_DUMP_TREE -> NodeDump.log(rootInActiveWindow, windows)
                 ACTION_APPLY_PROFILE -> applyProfile()
+            }
+        }
+    }
+
+    private val volumeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.getIntExtra(EXTRA_VOLUME_STREAM_TYPE, -1) == AudioManager.STREAM_MUSIC) {
+                widenVolumeStep(
+                    intent.getIntExtra(EXTRA_PREV_VOLUME_STREAM_VALUE, -1),
+                    intent.getIntExtra(EXTRA_VOLUME_STREAM_VALUE, -1),
+                )
             }
         }
     }
@@ -74,6 +88,12 @@ class TvHelperService : AccessibilityService() {
             registerReceiver(commandReceiver, filter, Manifest.permission.DUMP, null, RECEIVER_EXPORTED)
         } else {
             registerReceiver(commandReceiver, filter, Manifest.permission.DUMP, null)
+        }
+        val volumeFilter = IntentFilter(VOLUME_CHANGED_ACTION)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(volumeReceiver, volumeFilter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(volumeReceiver, volumeFilter)
         }
         val prefs = prefs()
         setGain(prefs.getInt(PREF_GAIN_DB, 0), prefs.getBoolean(PREF_LIMITER, true))
@@ -116,11 +136,12 @@ class TvHelperService : AccessibilityService() {
         when (event.keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT -> if (down) setGain(gainDb - GainLevels.STEP_DB, limiter)
             KeyEvent.KEYCODE_DPAD_RIGHT -> if (down) setGain(gainDb + GainLevels.STEP_DB, limiter)
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            -> if (down && event.repeatCount == 0) setGain(gainDb, !limiter)
             KeyEvent.KEYCODE_DPAD_CENTER,
             KeyEvent.KEYCODE_ENTER,
-            KeyEvent.KEYCODE_DPAD_UP,
-            -> if (down && event.repeatCount == 0) setGain(gainDb, !limiter)
-            KeyEvent.KEYCODE_DPAD_DOWN -> {
+            -> {
                 if (!down) applyProfile()
                 return true
             }
@@ -146,6 +167,25 @@ class TvHelperService : AccessibilityService() {
     private fun applyProfile() {
         if (::panel.isInitialized) closePanel()
         profile.start()
+    }
+
+    private fun widenVolumeStep(previous: Int, current: Int) {
+        // The volume this service set comes back as a broadcast and must not be widened again.
+        if (current == ownVolume) {
+            ownVolume = null
+            return
+        }
+        val audio = getSystemService(AudioManager::class.java)
+        if (audio.isStreamMute(AudioManager.STREAM_MUSIC)) return
+        val target = VolumeStep.target(
+            previous,
+            current,
+            audio.getStreamMinVolume(AudioManager.STREAM_MUSIC),
+            audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+        ) ?: return
+        ownVolume = target
+        audio.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
+        if (logKeys) Log.i(TAG, "Volume $previous → $current widened to $target")
     }
 
     private fun reportProfile(result: PictureProfile.Result) {
@@ -201,6 +241,7 @@ class TvHelperService : AccessibilityService() {
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         runCatching { unregisterReceiver(commandReceiver) }
+        runCatching { unregisterReceiver(volumeReceiver) }
         if (::panel.isInitialized) panel.hide()
         gain.release()
         super.onDestroy()
@@ -224,5 +265,9 @@ class TvHelperService : AccessibilityService() {
         const val EXTRA_MODE = "mode"
         const val EXTRA_LIMITER = "limiter"
         const val EXTRA_ENABLED = "enabled"
+        const val VOLUME_CHANGED_ACTION = "android.media.VOLUME_CHANGED_ACTION"
+        const val EXTRA_VOLUME_STREAM_TYPE = "android.media.EXTRA_VOLUME_STREAM_TYPE"
+        const val EXTRA_VOLUME_STREAM_VALUE = "android.media.EXTRA_VOLUME_STREAM_VALUE"
+        const val EXTRA_PREV_VOLUME_STREAM_VALUE = "android.media.EXTRA_PREV_VOLUME_STREAM_VALUE"
     }
 }
